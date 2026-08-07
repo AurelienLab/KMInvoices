@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Template Lab — mise au point du document</title>
+
+<!-- ORDRE DE CHARGEMENT SIGNIFICATIF (identique dans index.html et tests.html) :
+     1. 00-namespace  crée App et ses sous-espaces
+     2. 15-format     formatage fr-FR, utilisé par le moteur de calcul
+     3. 30-calc       moteur de calcul pur, produit le modèle de document
+     4. templates/*   chaque template s'enregistre dans App.templates
+     Aucun module ES, aucun import : contrainte file://. -->
+<script src="app/00-namespace.js"></script>
+<script src="app/15-format.js"></script>
+<script src="app/30-calc.js"></script>
+<script src="templates/default/template.js"></script>
+<link rel="stylesheet" href="templates/default/template.css">
+
+<style>
+  /* Chrome du laboratoire uniquement. Ne touche jamais .doc-root. */
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    font: 13px/1.5 "Segoe UI", system-ui, Arial, sans-serif;
+    background: #eceef1;
+    color: #1c1f23;
+  }
+  .lab-bar {
+    position: sticky; top: 0; z-index: 10;
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 10px 16px;
+    background: #1c1f23; color: #fff;
+    box-shadow: 0 1px 8px rgba(0,0,0,.2);
+  }
+  .lab-bar strong { font-size: 13px; letter-spacing: .04em; text-transform: uppercase; }
+  .lab-bar .sep { flex: 1 1 auto; }
+  .lab-bar label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #c8cdd3; }
+  .lab-bar select, .lab-bar input[type=number] {
+    font: inherit; font-size: 12px; padding: 4px 6px;
+    border: 1px solid #3a3f45; border-radius: 4px; background: #2a2f35; color: #fff;
+  }
+  .lab-bar button {
+    font: inherit; font-size: 12px; padding: 6px 12px;
+    border: 1px solid #3a3f45; border-radius: 5px;
+    background: #2a2f35; color: #fff; cursor: pointer;
+  }
+  .lab-bar button:hover { background: #3a4046; }
+  .lab-bar button.primary { background: #fff; color: #1c1f23; border-color: #fff; font-weight: 600; }
+
+  .lab-stage { padding: 24px 0 60px; }
+  .lab-zoom { transform-origin: top center; }
+
+  .lab-err {
+    max-width: 210mm; margin: 24px auto; padding: 16px;
+    background: #fef3f2; border: 1px solid #fecdca; border-radius: 8px; color: #b42318;
+    font-family: ui-monospace, Consolas, monospace; white-space: pre-wrap;
+  }
+
+  /* Repères de page A4 à l'écran, purement indicatifs, jamais imprimés. */
+  .lab-guides .doc-root {
+    background-image: repeating-linear-gradient(
+      to bottom,
+      transparent 0, transparent 296mm,
+      rgba(220, 38, 38, .45) 296mm, rgba(220, 38, 38, .45) 297mm
+    );
+  }
+
+  @media print {
+    .lab-bar { display: none; }
+    .lab-stage { padding: 0; }
+    .lab-zoom { transform: none !important; }
+    .lab-guides .doc-root { background-image: none; }
+    body { background: #fff; }
+  }
+</style>
+</head>
+<body>
+
+<div class="lab-bar">
+  <strong>Template Lab</strong>
+  <label>Template
+    <select id="tplSelect"></select>
+  </label>
+  <label>Lignes
+    <input type="number" id="nbLignes" value="12" min="1" max="60" style="width:60px">
+  </label>
+  <label><input type="checkbox" id="optImages" checked> Images</label>
+  <label><input type="checkbox" id="optRemise" checked> Remise globale</label>
+  <label><input type="checkbox" id="optAcompte" checked> Acompte</label>
+  <label><input type="checkbox" id="optLogo" checked> Logo</label>
+  <label><input type="checkbox" id="optGuides"> Repères A4</label>
+  <label>Zoom
+    <select id="zoomSelect">
+      <option value="1">100 %</option>
+      <option value="0.8">80 %</option>
+      <option value="0.6">60 %</option>
+      <option value="0.45">45 %</option>
+    </select>
+  </label>
+  <span class="sep"></span>
+  <button id="reloadBtn">Recharger le rendu</button>
+  <button class="primary" id="printBtn">Imprimer</button>
+</div>
+
+<div class="lab-stage">
+  <div class="lab-zoom" id="stage"></div>
+</div>
+
+<script>
+/**
+ * template-lab.html — page autonome de mise au point du template.
+ *
+ * Ne dépend ni d'IndexedDB, ni de JSZip, ni du store : uniquement de
+ * 30-calc.js et du template. C'est ici qu'on itère sur la présentation
+ * sans faire tourner le reste de l'application.
+ *
+ * Les images sont générées au canvas puis converties en Blob et en
+ * URL blob:, exactement comme dans l'application réelle. Aucun chemin
+ * relatif vers un fichier image : cela contaminerait le canvas en file://.
+ */
+(function () {
+  'use strict';
+
+  var App = window.App;
+  var stage = document.getElementById('stage');
+  var blobUrls = [];   // révoqués seulement après impression
+
+  // --- Génération d'images de machines sans aucun fichier externe ---------
+
+  var MACHINES = [
+    { nom: 'Tour parallèle',      teinte: 205 },
+    { nom: 'Fraiseuse CN',        teinte: 25  },
+    { nom: 'Presse plieuse',      teinte: 145 },
+    { nom: 'Scie à ruban',        teinte: 265 },
+    { nom: 'Compresseur',         teinte: 190 },
+    { nom: 'Poste à souder',      teinte: 15  },
+    { nom: 'Perceuse à colonne',  teinte: 230 },
+    { nom: 'Rectifieuse',         teinte: 95  },
+    { nom: 'Cisaille guillotine', teinte: 340 },
+    { nom: 'Touret à meuler',     teinte: 45  },
+    { nom: 'Cabine de peinture',  teinte: 175 },
+    { nom: 'Pont roulant',        teinte: 300 }
+  ];
+
+  function dessinerMachine(nom, teinte, w, h) {
+    var c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    var g = c.getContext('2d');
+
+    var fond = g.createLinearGradient(0, 0, 0, h);
+    fond.addColorStop(0, 'hsl(' + teinte + ', 18%, 94%)');
+    fond.addColorStop(1, 'hsl(' + teinte + ', 14%, 84%)');
+    g.fillStyle = fond;
+    g.fillRect(0, 0, w, h);
+
+    // Silhouette schématique : socle, corps, colonne, tête.
+    var base = 'hsl(' + teinte + ', 32%, 34%)';
+    var clair = 'hsl(' + teinte + ', 30%, 52%)';
+    g.fillStyle = base;
+    g.fillRect(w * 0.12, h * 0.72, w * 0.76, h * 0.12);        // socle
+    g.fillRect(w * 0.20, h * 0.40, w * 0.44, h * 0.34);        // bâti
+    g.fillStyle = clair;
+    g.fillRect(w * 0.58, h * 0.16, w * 0.14, h * 0.58);        // colonne
+    g.fillRect(w * 0.26, h * 0.16, w * 0.46, h * 0.10);        // traverse
+    g.fillStyle = base;
+    g.beginPath();
+    g.arc(w * 0.34, h * 0.55, Math.min(w, h) * 0.10, 0, Math.PI * 2);
+    g.fill();                                                   // volant
+    g.fillStyle = 'hsl(' + teinte + ', 60%, 45%)';
+    g.fillRect(w * 0.24, h * 0.44, w * 0.16, h * 0.04);        // détail
+
+    g.fillStyle = 'hsl(' + teinte + ', 25%, 25%)';
+    g.font = '600 ' + Math.round(h * 0.075) + 'px "Segoe UI", sans-serif';
+    g.fillText(nom, w * 0.06, h * 0.94);
+
+    return c;
+  }
+
+  function canvasVersBlobUrl(canvas) {
+    return new Promise(function (resolve) {
+      canvas.toBlob(function (blob) {
+        var url = URL.createObjectURL(blob);
+        blobUrls.push(url);
+        resolve(url);
+      }, 'image/jpeg', 0.8);
+    });
+  }
+
+  function dessinerLogo() {
+    var c = document.createElement('canvas');
+    c.width = 420; c.height = 140;
+    var g = c.getContext('2d');
+    g.clearRect(0, 0, 420, 140);
+    g.fillStyle = '#14425f';
+    g.fillRect(0, 34, 72, 72);
+    g.fillStyle = '#fff';
+    g.font = '700 42px "Segoe UI", sans-serif';
+    g.fillText('KM', 8, 84);
+    g.fillStyle = '#14425f';
+    g.font = '700 34px "Segoe UI", sans-serif';
+    g.fillText('MÉCANIQUE', 88, 74);
+    g.fillStyle = '#5b6570';
+    g.font = '400 17px "Segoe UI", sans-serif';
+    g.fillText('Machines-outils et maintenance', 90, 100);
+    return c;
+  }
+
+  // --- Jeu de données factices --------------------------------------------
+
+  var SOCIETE = {
+    nom: 'KM Mécanique SARL',
+    adresse: '14 rue des Ateliers\nZone industrielle du Pré-Neuf',
+    codePostal: '44800',
+    ville: 'Saint-Herblain',
+    siret: '812 456 903 00027',
+    tvaIntracom: 'FR 42 812456903',
+    telephone: '02 40 55 18 27',
+    email: 'contact@km-mecanique.fr',
+    siteWeb: 'www.km-mecanique.fr',
+    logoFile: 'logo.png',
+    regimeTVA: 'normal',
+    conditionsPaiement:
+      'Acompte de 30 % à la commande, solde à la mise en service.\n' +
+      'Règlement par virement à 30 jours date de facture.\n' +
+      'Escompte pour paiement anticipé : néant.',
+    mentionsLegales:
+      'SARL au capital de 45 000 € — RCS Nantes 812 456 903 — APE 4669B\n' +
+      'Pénalités de retard : trois fois le taux d\'intérêt légal. ' +
+      'Indemnité forfaitaire de recouvrement : 40 €.'
+  };
+
+  var DESCRIPTIONS = [
+    'Machine révisée en atelier, contrôle géométrique complet effectué.\nGarantie pièces et main-d\'œuvre 12 mois hors consommables.',
+    'Livraison sur site, mise à niveau et calibrage inclus.\nFormation opérateur d\'une demi-journée assurée à la réception.',
+    'Équipement d\'occasion, état de fonctionnement vérifié.\nCarter de protection conforme et arrêt d\'urgence testé.',
+    'Modèle neuf sous garantie constructeur, notice en français fournie.',
+    'Reprise possible de votre ancien matériel, valorisation à définir après expertise sur site.\nLe montant de la reprise viendra en déduction du solde et fera l\'objet d\'un avoir distinct.\nDépose et évacuation de l\'ancien équipement comprises, y compris manutention et mise en conformité de l\'emplacement libéré.'
+  ];
+
+  var UNITES = ['u', 'u', 'u', 'forfait', 'h', 'jour'];
+  var TAUX   = [20, 20, 20, 20, 20, 10, 20, 20, 0, 20, 10, 20];
+
+  function construireDevis(options) {
+    var n = options.nbLignes;
+    var lignes = [];
+    for (var i = 0; i < n; i++) {
+      var m = MACHINES[i % MACHINES.length];
+      var suffixe = i >= MACHINES.length ? ' (lot ' + (Math.floor(i / MACHINES.length) + 1) + ')' : '';
+      lignes.push({
+        id: 'l' + i,
+        reference: 'KM-' + String(1200 + i * 7),
+        titre: m.nom + suffixe + ' — modèle ' + (i % 3 === 0 ? 'XR-450' : (i % 3 === 1 ? 'S220' : 'HD-9')),
+        description: DESCRIPTIONS[i % DESCRIPTIONS.length],
+        prixHTCents: [489000, 1275000, 96500, 328000, 154900, 42000][i % 6] + i * 1130,
+        tauxTVA: TAUX[i % TAUX.length],
+        unite: UNITES[i % UNITES.length],
+        imageFile: options.images ? ('img-' + (i % MACHINES.length) + '.jpg') : null,
+        quantite: [1, 1, 2, 1, 3, 1.5][i % 6],
+        remisePct: [0, 0, 5, 0, 10, 0][i % 6]
+      });
+    }
+
+    return {
+      id: 'd1',
+      numero: '2026-0042',
+      dateEmission: '2026-08-07',
+      validiteJours: 30,
+      statut: 'brouillon',
+      client: {
+        nom: 'Ateliers Fournier & Fils',
+        contact: 'Laurent Fournier, responsable production',
+        adresse: '7 impasse de la Forge',
+        codePostal: '49300',
+        ville: 'Cholet',
+        email: 'l.fournier@ateliers-fournier.fr',
+        telephone: '02 41 62 04 91'
+      },
+      lignes: lignes,
+      remiseGlobalePct: options.remise ? 3.5 : 0,
+      acomptePct: options.acompte ? 30 : 0,
+      notes: 'Délai de livraison estimé à 6 semaines à compter de la réception de l\'acompte.\n' +
+             'Accès atelier par la cour arrière, hauteur de passage 3,20 m à vérifier avant expédition.'
+    };
+  }
+
+  // --- Rendu ---------------------------------------------------------------
+
+  function libererImages() {
+    blobUrls.forEach(function (u) { URL.revokeObjectURL(u); });
+    blobUrls = [];
+  }
+
+  function preparerImages(options) {
+    var jobs = [];
+    var urls = {};
+
+    if (options.logo) {
+      jobs.push(canvasVersBlobUrl(dessinerLogo()).then(function (u) { urls['logo.png'] = u; }));
+    }
+    if (options.images) {
+      MACHINES.forEach(function (m, i) {
+        jobs.push(
+          canvasVersBlobUrl(dessinerMachine(m.nom, m.teinte, 480, 360))
+            .then(function (u) { urls['img-' + i + '.jpg'] = u; })
+        );
+      });
+    }
+    return Promise.all(jobs).then(function () { return urls; });
+  }
+
+  function lireOptions() {
+    return {
+      nbLignes: Math.max(1, Math.min(60, parseInt(document.getElementById('nbLignes').value, 10) || 12)),
+      images:  document.getElementById('optImages').checked,
+      remise:  document.getElementById('optRemise').checked,
+      acompte: document.getElementById('optAcompte').checked,
+      logo:    document.getElementById('optLogo').checked
+    };
+  }
+
+  function rendre() {
+    var options = lireOptions();
+    libererImages();
+    stage.innerHTML = '';
+
+    preparerImages(options).then(function (imageUrls) {
+      var societe = Object.create(SOCIETE);
+      if (!options.logo) societe.logoFile = null;
+
+      var model = App.calc.buildDocumentModel({
+        societe: societe,
+        devis: construireDevis(options),
+        imageUrls: imageUrls
+      });
+
+      var tplId = document.getElementById('tplSelect').value;
+      var tpl = App.templates[tplId];
+      stage.appendChild(tpl.render(model));
+
+      // Contrôle de cohérence visible dans la console : le total doit
+      // toujours être la somme des bases nettes plus la TVA.
+      var b = model.brut;
+      console.log('[lab] sous-total HT', b.sousTotalHTCents,
+                  '· remise', b.remiseGlobaleCents,
+                  '· HT', b.totalHTCents,
+                  '· TVA', b.totalTVACents,
+                  '· TTC', b.totalTTCCents,
+                  '· contrôle', (b.totalHTCents + b.totalTVACents) === b.totalTTCCents ? 'OK' : 'INCOHÉRENT');
+    }).catch(function (err) {
+      var box = document.createElement('div');
+      box.className = 'lab-err';
+      box.textContent = 'Échec du rendu :\n' + (err && err.stack || err);
+      stage.appendChild(box);
+      throw err;
+    });
+  }
+
+  // --- Câblage de la barre d'outils ---------------------------------------
+
+  function initTemplates() {
+    var sel = document.getElementById('tplSelect');
+    Object.keys(App.templates).forEach(function (id) {
+      var o = document.createElement('option');
+      o.value = id;
+      o.textContent = App.templates[id].label || id;
+      sel.appendChild(o);
+    });
+    if (!sel.options.length) {
+      stage.innerHTML = '<div class="lab-err">Aucun template enregistré dans App.templates. ' +
+        'Vérifier l\'ordre des balises &lt;script&gt; dans cette page.</div>';
+      return false;
+    }
+    return true;
+  }
+
+  ['nbLignes', 'optImages', 'optRemise', 'optAcompte', 'optLogo', 'tplSelect']
+    .forEach(function (id) {
+      document.getElementById(id).addEventListener('change', rendre);
+    });
+
+  document.getElementById('optGuides').addEventListener('change', function () {
+    document.body.classList.toggle('lab-guides', this.checked);
+  });
+
+  document.getElementById('zoomSelect').addEventListener('change', function () {
+    document.getElementById('stage').style.transform = 'scale(' + this.value + ')';
+  });
+
+  document.getElementById('reloadBtn').addEventListener('click', rendre);
+
+  // Les URL blob: ne sont révoquées qu'APRÈS l'impression, jamais avant :
+  // les révoquer trop tôt vide les images du PDF.
+  document.getElementById('printBtn').addEventListener('click', function () {
+    window.print();
+  });
+
+  if (initTemplates()) rendre();
+})();
+</script>
+
+</body>
+</html>

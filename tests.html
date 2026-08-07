@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Tests — générateur de devis</title>
+
+<!-- Aucun framework de test n'est installable sur le poste cible : ce
+     lanceur est écrit à la main. Même ordre de chargement que index.html. -->
+<script src="vendor/jszip.min.js"></script>
+<script src="app/00-namespace.js"></script>
+<script src="app/10-db.js"></script>
+<script src="app/15-format.js"></script>
+<script src="app/20-schema.js"></script>
+<script src="app/30-calc.js"></script>
+<script src="app/40-archive.js"></script>
+
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font: 14px/1.55 "Segoe UI", system-ui, Arial, sans-serif;
+    margin: 0; padding: 24px; background: #f4f6f8; color: #16191d;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sous { color: #5b6570; margin: 0 0 18px; }
+  .bilan {
+    position: sticky; top: 0; z-index: 5;
+    display: flex; gap: 18px; align-items: center;
+    padding: 12px 16px; margin-bottom: 18px;
+    border-radius: 8px; background: #fff; border: 1px solid #dde2e7;
+    box-shadow: 0 1px 3px rgba(16,24,40,.06);
+  }
+  .bilan .gros { font-size: 22px; font-weight: 700; }
+  .bilan.vert { border-color: #a6f4c5; background: #ecfdf3; color: #08602d; }
+  .bilan.rouge { border-color: #fecdca; background: #fef3f2; color: #912018; }
+  .bilan button {
+    margin-left: auto; font: inherit; padding: 7px 14px;
+    border: 1px solid #c3ccd4; border-radius: 6px; background: #fff; cursor: pointer;
+  }
+
+  .groupe { margin-bottom: 20px; background: #fff; border: 1px solid #dde2e7; border-radius: 8px; overflow: hidden; }
+  .groupe > h2 {
+    font-size: 13px; text-transform: uppercase; letter-spacing: .06em;
+    margin: 0; padding: 10px 14px; background: #fafbfc; border-bottom: 1px solid #eef0f3;
+    color: #5b6570;
+  }
+  .cas { display: flex; gap: 12px; padding: 7px 14px; border-bottom: 1px solid #f2f4f6; align-items: baseline; }
+  .cas:last-child { border-bottom: 0; }
+  .cas .et { font-weight: 700; font-size: 12px; width: 58px; flex: 0 0 58px; }
+  .cas.ok .et { color: #1a7f37; }
+  .cas.ko .et { color: #b42318; }
+  .cas.skip .et { color: #b54708; }
+  .cas .nom { flex: 1 1 auto; }
+  .cas .det {
+    font-family: ui-monospace, Consolas, monospace; font-size: 12px; color: #b42318;
+    white-space: pre-wrap; flex: 1 1 100%; padding-left: 70px;
+  }
+</style>
+</head>
+<body>
+
+<h1>Tests</h1>
+<p class="sous">Lanceur maison, sans dépendance. Ouvrir ce fichier en <code>file://</code>,
+   dans les mêmes conditions que l'application.</p>
+
+<div class="bilan" id="bilan"><span class="gros">…</span><span>exécution en cours</span>
+  <button onclick="location.reload()">Relancer</button></div>
+
+<div id="sortie"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var App = window.App;
+
+  // --- Micro-framework -----------------------------------------------------
+
+  var sortie = document.getElementById('sortie');
+  var stats = { ok: 0, ko: 0, skip: 0 };
+  var groupeCourant = null;
+  var pile = Promise.resolve();
+
+  function groupe(nom) {
+    var g = document.createElement('div');
+    g.className = 'groupe';
+    var h = document.createElement('h2');
+    h.textContent = nom;
+    g.appendChild(h);
+    sortie.appendChild(g);
+    groupeCourant = g;
+  }
+
+  function ligne(etat, nom, detail) {
+    var d = document.createElement('div');
+    d.className = 'cas ' + etat;
+    var e = document.createElement('span');
+    e.className = 'et';
+    e.textContent = etat === 'ok' ? 'OK' : (etat === 'ko' ? 'ÉCHEC' : 'IGNORÉ');
+    var n = document.createElement('span');
+    n.className = 'nom';
+    n.textContent = nom;
+    d.appendChild(e); d.appendChild(n);
+    if (detail) {
+      var t = document.createElement('div');
+      t.className = 'det';
+      t.textContent = detail;
+      d.appendChild(t);
+    }
+    groupeCourant.appendChild(d);
+    stats[etat === 'ok' ? 'ok' : (etat === 'ko' ? 'ko' : 'skip')]++;
+  }
+
+  /** Test synchrone ou renvoyant une promesse. */
+  function test(nom, fn) {
+    pile = pile.then(function () {
+      try {
+        var r = fn();
+        if (r && typeof r.then === 'function') {
+          return r.then(
+            function () { ligne('ok', nom); },
+            function (e) { ligne('ko', nom, (e && e.message) || String(e)); }
+          );
+        }
+        ligne('ok', nom);
+      } catch (e) {
+        ligne('ko', nom, (e && e.message) || String(e));
+      }
+    });
+  }
+
+  function ignorer(nom, raison) {
+    pile = pile.then(function () { ligne('skip', nom, raison); });
+  }
+
+  function assert(condition, message) {
+    if (!condition) throw new Error(message || 'assertion fausse');
+  }
+
+  function egal(obtenu, attendu, message) {
+    if (obtenu !== attendu) {
+      throw new Error((message ? message + ' — ' : '') +
+        'obtenu ' + JSON.stringify(obtenu) + ', attendu ' + JSON.stringify(attendu));
+    }
+  }
+
+  /** Compare en ignorant le type d'espace : Intl utilise des espaces fines. */
+  function egalTexte(obtenu, attendu, message) {
+    var norm = function (s) { return String(s).replace(/[\s  ]+/g, ' '); };
+    egal(norm(obtenu), norm(attendu), message);
+  }
+
+  // ========================================================================
+  // Arrondis
+  // ========================================================================
+
+  groupe('Arrondi');
+
+  test('roundHalfUp arrondit 0,5 vers le haut', function () {
+    egal(App.calc.roundHalfUp(0.5), 1);
+    egal(App.calc.roundHalfUp(1.5), 2);
+    egal(App.calc.roundHalfUp(2.5), 3);
+  });
+
+  test('roundHalfUp est symétrique sur les négatifs', function () {
+    egal(App.calc.roundHalfUp(-0.5), -1);
+    egal(App.calc.roundHalfUp(-1.5), -2);
+    // Math.round(-0.5) vaut -0 : c'est précisément ce qu'on refuse.
+    assert(App.calc.roundHalfUp(-0.5) !== Math.round(-0.5), 'doit différer de Math.round');
+  });
+
+  test('roundHalfUp tolère les valeurs non finies', function () {
+    egal(App.calc.roundHalfUp(NaN), 0);
+    egal(App.calc.roundHalfUp(Infinity), 0);
+  });
+
+  test('conversion euros <-> centimes', function () {
+    egal(App.calc.eurosToCents(19.99), 1999);
+    egal(App.calc.eurosToCents(0.1 + 0.2), 30);   // 0.30000000000000004
+    egal(App.calc.centsToEuros(1999), 19.99);
+  });
+
+  // ========================================================================
+  // Total de ligne
+  // ========================================================================
+
+  groupe('Total de ligne');
+
+  test('total = prix x quantité', function () {
+    egal(App.calc.ligneTotalHTCents({ prixHTCents: 48900, quantite: 2, remisePct: 0 }), 97800);
+  });
+
+  test('remise de ligne appliquée avant arrondi', function () {
+    // 10,03 x 3 x 0,95 = 28,5855 -> 28,59
+    egal(App.calc.ligneTotalHTCents({ prixHTCents: 1003, quantite: 3, remisePct: 5 }), 2859);
+  });
+
+  test('quantité décimale acceptée', function () {
+    // 65,00 x 7,5 = 487,50
+    egal(App.calc.ligneTotalHTCents({ prixHTCents: 6500, quantite: 7.5, remisePct: 0 }), 48750);
+  });
+
+  test('arrondi ligne par ligne, jamais sur la somme brute', function () {
+    // Trois lignes à 0,335 € : chacune arrondie à 0,34 -> 1,02.
+    // Sommer avant d'arrondir donnerait 1,01 : c'est l'erreur classique.
+    var l = { prixHTCents: 67, quantite: 0.5, remisePct: 0 };
+    var r = App.calc.computeDevis({ lignes: [l, l, l] });
+    egal(App.calc.ligneTotalHTCents(l), 34);
+    egal(r.sousTotalHTCents, 102);
+  });
+
+  // ========================================================================
+  // TVA multi-taux
+  // ========================================================================
+
+  groupe('TVA multi-taux');
+
+  test('récapitulatif ventilé par taux, ordre décroissant', function () {
+    var r = App.calc.computeDevis({
+      lignes: [
+        { prixHTCents: 10000, quantite: 1, tauxTVA: 20 },
+        { prixHTCents: 5000, quantite: 1, tauxTVA: 10 },
+        { prixHTCents: 2000, quantite: 1, tauxTVA: 5.5 },
+        { prixHTCents: 3000, quantite: 1, tauxTVA: 20 }
+      ]
+    });
+    egal(r.recapTVA.length, 3);
+    egal(r.recapTVA[0].taux, 20);
+    egal(r.recapTVA[1].taux, 10);
+    egal(r.recapTVA[2].taux, 5.5);
+    egal(r.recapTVA[0].baseHTCents, 13000);
+    egal(r.recapTVA[0].montantTVACents, 2600);
+    egal(r.recapTVA[1].montantTVACents, 500);
+    egal(r.recapTVA[2].montantTVACents, 110);
+    egal(r.totalTVACents, 3210);
+  });
+
+  test('taux 0 produit une base sans TVA', function () {
+    var r = App.calc.computeDevis({ lignes: [{ prixHTCents: 10000, quantite: 1, tauxTVA: 0 }] });
+    egal(r.totalTVACents, 0);
+    egal(r.totalTTCCents, 10000);
+  });
+
+  test('TTC = HT + TVA, toujours', function () {
+    var r = App.calc.computeDevis({
+      lignes: [
+        { prixHTCents: 3333, quantite: 3, tauxTVA: 20 },
+        { prixHTCents: 1777, quantite: 7, tauxTVA: 5.5 }
+      ]
+    });
+    egal(r.totalTTCCents, r.totalHTCents + r.totalTVACents);
+  });
+
+  // ========================================================================
+  // Remise globale ventilée
+  // ========================================================================
+
+  groupe('Remise globale ventilée');
+
+  test('la remise s\'applique après le sous-total', function () {
+    var r = App.calc.computeDevis({
+      lignes: [{ prixHTCents: 10000, quantite: 1, tauxTVA: 20 }],
+      remiseGlobalePct: 10
+    });
+    egal(r.sousTotalHTCents, 10000);
+    egal(r.remiseGlobaleCents, 1000);
+    egal(r.totalHTCents, 9000);
+    egal(r.totalTVACents, 1800);
+  });
+
+  test('la somme des parts ventilées égale exactement la remise', function () {
+    var r = App.calc.computeDevis({
+      lignes: [
+        { prixHTCents: 10000, quantite: 1, tauxTVA: 20 },
+        { prixHTCents: 5000, quantite: 1, tauxTVA: 10 },
+        { prixHTCents: 3333, quantite: 1, tauxTVA: 5.5 }
+      ],
+      remiseGlobalePct: 7
+    });
+    var somme = r.recapTVA.reduce(function (s, t) { return s + t.remiseVentileeCents; }, 0);
+    egal(somme, r.remiseGlobaleCents, 'le résidu d\'arrondi doit être absorbé');
+    egal(r.totalHTCents, r.sousTotalHTCents - r.remiseGlobaleCents);
+  });
+
+  test('le résidu d\'arrondi tombe sur la plus grosse base', function () {
+    // 3 bases, remise dont le prorata ne tombe pas juste.
+    var r = App.calc.computeDevis({
+      lignes: [
+        { prixHTCents: 10001, quantite: 1, tauxTVA: 20 },
+        { prixHTCents: 3337, quantite: 1, tauxTVA: 10 },
+        { prixHTCents: 1667, quantite: 1, tauxTVA: 5.5 }
+      ],
+      remiseGlobalePct: 3.33
+    });
+    var somme = r.recapTVA.reduce(function (s, t) { return s + t.remiseVentileeCents; }, 0);
+    egal(somme, r.remiseGlobaleCents);
+    var plusGrosse = r.recapTVA[0];   // taux 20, base la plus élevée ici
+    assert(plusGrosse.taux === 20, 'la plus grosse base doit être celle à 20 %');
+  });
+
+  test('remise nulle ne modifie rien', function () {
+    var lignes = [{ prixHTCents: 12345, quantite: 2, tauxTVA: 20 }];
+    var a = App.calc.computeDevis({ lignes: lignes });
+    var b = App.calc.computeDevis({ lignes: lignes, remiseGlobalePct: 0 });
+    egal(a.totalTTCCents, b.totalTTCCents);
+    egal(b.remiseGlobaleCents, 0);
+  });
+
+  test('devis vide ne casse pas le moteur', function () {
+    var r = App.calc.computeDevis({ lignes: [], remiseGlobalePct: 10, acomptePct: 30 });
+    egal(r.sousTotalHTCents, 0);
+    egal(r.remiseGlobaleCents, 0);
+    egal(r.totalTTCCents, 0);
+    egal(r.acompteCents, 0);
+    egal(r.recapTVA.length, 0);
+  });
+
+  // ========================================================================
+  // Acompte
+  // ========================================================================
+
+  groupe('Acompte');
+
+  test('l\'acompte est calculé sur le TTC', function () {
+    var r = App.calc.computeDevis({
+      lignes: [{ prixHTCents: 100000, quantite: 1, tauxTVA: 20 }],
+      acomptePct: 30
+    });
+    egal(r.totalTTCCents, 120000);
+    egal(r.acompteCents, 36000);
+    egal(r.resteAPayerCents, 84000);
+  });
+
+  test('acompte + reste = TTC', function () {
+    var r = App.calc.computeDevis({
+      lignes: [{ prixHTCents: 33333, quantite: 3, tauxTVA: 5.5 }],
+      acomptePct: 33.33
+    });
+    egal(r.acompteCents + r.resteAPayerCents, r.totalTTCCents);
+  });
+
+  // ========================================================================
+  // Formatage
+  // ========================================================================
+
+  groupe('Formatage fr-FR');
+
+  test('montants à deux décimales, séparateur de milliers', function () {
+    egalTexte(App.format.montant(123456), '1 234,56');
+    egalTexte(App.format.montant(1000000), '10 000,00');
+    egalTexte(App.format.montant(0), '0,00');
+  });
+
+  test('euros avec symbole', function () {
+    egalTexte(App.format.euros(123456), '1 234,56 €');
+  });
+
+  test('dates', function () {
+    egal(App.format.dateLongue('2026-08-07'), '7 août 2026');
+    egal(App.format.dateCourte('2026-08-07'), '07/08/2026');
+    egal(App.format.dateLongue(''), '');
+    egal(App.format.dateLongue('n\'importe quoi'), '');
+  });
+
+  test('ajout de jours franchit les mois', function () {
+    egal(App.format.ajouterJours('2026-08-07', 30), '2026-09-06');
+    egal(App.format.ajouterJours('2026-12-20', 30), '2027-01-19');
+  });
+
+  test('découpage en lignes, vides ignorées', function () {
+    egal(App.format.lignes('a\n\n  b  \r\nc').join('|'), 'a|b|c');
+    egal(App.format.lignes('').length, 0);
+    egal(App.format.lignes(null).length, 0);
+  });
+
+  // ========================================================================
+  // Schéma
+  // ========================================================================
+
+  groupe('Schéma, validation, migrations');
+
+  test('un espace de travail neuf est valide', function () {
+    var v = App.schema.validate(App.schema.defaultWorkspace());
+    assert(v.ok, v.erreurs.join(' / '));
+    egal(v.avertissements.length, 0);
+  });
+
+  test('schemaVersion supérieure : refus explicite', function () {
+    var v = App.schema.validate({ schemaVersion: App.schema.CURRENT + 1 });
+    assert(!v.ok, 'doit être refusé');
+    assert(/plus récente/.test(v.erreurs[0]), 'le message doit être explicite : ' + v.erreurs[0]);
+  });
+
+  test('schemaVersion absente : refus', function () {
+    assert(!App.schema.validate({ societe: {} }).ok);
+    assert(!App.schema.validate(null).ok);
+  });
+
+  test('référence en double : avertissement, pas blocage', function () {
+    var v = App.schema.validate({
+      schemaVersion: 1,
+      catalogue: [
+        { id: 'a', reference: 'KM-100' },
+        { id: 'b', reference: 'km-100' }
+      ]
+    });
+    assert(v.ok, 'ne doit pas bloquer l\'ouverture');
+    assert(v.avertissements.length >= 1, 'doit signaler le doublon');
+  });
+
+  test('migrate refuse une version sans chemin de migration', function () {
+    var leve = false;
+    try { App.schema.migrate({ schemaVersion: 0 }); } catch (e) { leve = true; }
+    assert(leve, 'doit lever une erreur explicite');
+  });
+
+  test('normalize complète les champs absents', function () {
+    var d = App.schema.normalize({
+      schemaVersion: 1,
+      devis: [{ numero: '2026-0001', lignes: [{ titre: 'X', prixHTCents: 100 }] }]
+    });
+    assert(d.societe.nom === '', 'société par défaut');
+    assert(d.settings.numerotation.largeur === 4, 'réglages par défaut');
+    assert(!!d.devis[0].id, 'identifiant généré');
+    assert(!!d.devis[0].lignes[0].id, 'identifiant de ligne généré');
+    egal(d.devis[0].lignes[0].quantite, 1);
+    egal(d.devis[0].remiseGlobalePct, 0);
+  });
+
+  test('numérotation formatée sur la largeur demandée', function () {
+    egal(App.schema.formaterNumero({ prefixe: '2026', prochainSeq: 42, largeur: 4 }), '2026-0042');
+    egal(App.schema.formaterNumero({ prefixe: '2026', prochainSeq: 7, largeur: 3 }), '2026-007');
+    egal(App.schema.formaterNumero({ prefixe: '', prochainSeq: 5, largeur: 2 }), '05');
+  });
+
+  test('nomImage ne réutilise jamais un nom', function () {
+    var a = App.schema.nomImage('jpg');
+    var b = App.schema.nomImage('jpg');
+    assert(a !== b, 'deux appels doivent donner deux noms différents');
+    assert(/^img-.+\.jpg$/.test(a), 'format attendu : ' + a);
+  });
+
+  // ========================================================================
+  // Règle du snapshot
+  // ========================================================================
+
+  groupe('Règle du snapshot');
+
+  test('une ligne copie le libellé, le prix et le taux à l\'insertion', function () {
+    var p = App.schema.nouveauProduit({
+      reference: 'KM-1200', titre: 'Tour parallèle',
+      prixHTCents: 489000, tauxTVA: 20, unite: 'u', imageFile: 'img-1.jpg'
+    });
+    var l = App.schema.ligneDepuisProduit(p, 2);
+
+    // Le catalogue bouge APRÈS l'insertion.
+    p.prixHTCents = 999000;
+    p.titre = 'Tour parallèle (nouveau modèle)';
+    p.tauxTVA = 10;
+    p.imageFile = 'img-2.jpg';
+
+    egal(l.prixHTCents, 489000, 'le prix figé ne doit pas suivre le catalogue');
+    egal(l.titre, 'Tour parallèle');
+    egal(l.tauxTVA, 20);
+    egal(l.imageFile, 'img-1.jpg');
+    egal(l.produitId, p.id, 'le lien est conservé, mais seulement pour proposer une resynchronisation');
+    egal(l.quantite, 2);
+  });
+
+  test('un devis fige les coordonnées du client à l\'insertion', function () {
+    var fiche = App.schema.nouveauClient({
+      nom: 'Ateliers Fournier', contact: 'L. Fournier',
+      adresse: '7 impasse de la Forge', codePostal: '49300', ville: 'Cholet',
+      telephone: '0241620491', email: 'l.fournier@af.fr'
+    });
+    var snap = App.schema.clientDepuisRepertoire(fiche);
+
+    // Le client déménage APRÈS l'établissement du devis.
+    fiche.ville = 'Angers';
+    fiche.adresse = '1 rue Neuve';
+
+    egal(snap.ville, 'Cholet', 'le devis doit garder l\'adresse à laquelle il a été envoyé');
+    egal(snap.adresse, '7 impasse de la Forge');
+    assert(App.schema.clientDiverge(snap, fiche), 'la divergence doit être détectée');
+  });
+
+  test('les champs internes ne partent pas dans le devis', function () {
+    var snap = App.schema.clientDepuisRepertoire(
+      App.schema.nouveauClient({ nom: 'X', siret: '123', notes: 'mauvais payeur' })
+    );
+    egal(snap.siret, undefined, 'le SIRET client n\'est pas imprimé sur le devis');
+    egal(snap.notes, undefined, 'les notes internes ne doivent jamais fuiter');
+  });
+
+  test('un fichier antérieur au répertoire s\'ouvre sans migration', function () {
+    var d = App.schema.normalize({
+      schemaVersion: 1,
+      devis: [{ numero: '2026-0001', client: { nom: 'X' }, lignes: [] }]
+    });
+    assert(Array.isArray(d.clients) && d.clients.length === 0, 'répertoire vide ajouté');
+    egal(d.devis[0].clientId, null, 'clientId comblé à null');
+    egal(d.devis[0].client.nom, 'X', 'le bloc client existant est préservé');
+    egal(d.schemaVersion, 1, 'un ajout de champ facultatif ne change pas la version');
+  });
+
+  test('client en double dans le répertoire : avertissement, pas blocage', function () {
+    var v = App.schema.validate({
+      schemaVersion: 1,
+      clients: [{ id: 'a', nom: 'Fournier' }, { id: 'b', nom: 'FOURNIER' }]
+    });
+    assert(v.ok, 'ne doit pas empêcher l\'ouverture');
+    assert(v.avertissements.some(function (a) { return /double/.test(a); }), 'doit signaler');
+  });
+
+  test('les images des lignes de devis comptent comme référencées', function () {
+    var data = {
+      societe: { logoFile: 'logo.png' },
+      catalogue: [{ id: 'p1', imageFile: 'img-actuelle.jpg' }],
+      devis: [{ id: 'd1', lignes: [{ imageFile: 'img-ancienne.jpg' }] }]
+    };
+    var refs = App.schema.imagesReferencees(data).sort();
+    egal(refs.join(','), 'img-actuelle.jpg,img-ancienne.jpg,logo.png',
+      'une image utilisée par un ancien devis ne doit jamais être considérée orpheline');
+  });
+
+  // ========================================================================
+  // Modèle de document
+  // ========================================================================
+
+  groupe('Modèle de document');
+
+  function modeleExemple(surcharge) {
+    return App.calc.buildDocumentModel(Object.assign({
+      societe: {
+        nom: 'KM Mécanique', adresse: '14 rue des Ateliers',
+        codePostal: '44800', ville: 'Saint-Herblain', regimeTVA: 'normal',
+        conditionsPaiement: 'Acompte 30 %'
+      },
+      devis: {
+        numero: '2026-0042', dateEmission: '2026-08-07', validiteJours: 30,
+        client: { nom: 'Ateliers Fournier' },
+        lignes: [
+          { titre: 'Tour', prixHTCents: 489000, quantite: 1, tauxTVA: 20, unite: 'u' },
+          { titre: 'Pose', prixHTCents: 60000, quantite: 1, tauxTVA: 10, unite: 'forfait' }
+        ],
+        acomptePct: 30
+      },
+      imageUrls: {}
+    }, surcharge || {}));
+  }
+
+  test('le modèle est entièrement formaté, aucun calcul restant', function () {
+    var m = modeleExemple();
+    egalTexte(m.totaux.totalHTTexte, '5 490,00');
+    egalTexte(m.totaux.totalTVATexte, '1 038,00');
+    egalTexte(m.totaux.totalTTCTexte, '6 528,00 €');
+    egal(m.devis.dateEmissionTexte, '7 août 2026');
+    egal(m.devis.dateValiditeTexte, '6 septembre 2026');
+    egal(m.recapTVA.length, 2);
+    assert(m.acompte !== null, 'acompte présent');
+    egalTexte(m.acompte.montantTexte, '1 958,40 €');
+  });
+
+  test('acompte absent quand le pourcentage est nul', function () {
+    var m = App.calc.buildDocumentModel({
+      societe: {}, devis: { lignes: [{ prixHTCents: 100, quantite: 1, tauxTVA: 20 }], acomptePct: 0 }
+    });
+    egal(m.acompte, null);
+  });
+
+  test('mention 293 B ajoutée en franchise de TVA', function () {
+    var m = modeleExemple({
+      societe: { nom: 'X', regimeTVA: 'franchise' }
+    });
+    egal(m.societe.mentionTVA, 'TVA non applicable, article 293 B du CGI');
+  });
+
+  test('aucune mention TVA en régime normal', function () {
+    egal(modeleExemple().societe.mentionTVA, '');
+  });
+
+  test('image ignorée quand afficherImage vaut false', function () {
+    var m = App.calc.buildDocumentModel({
+      societe: {},
+      devis: { lignes: [
+        { titre: 'A', prixHTCents: 100, quantite: 1, tauxTVA: 20, imageFile: 'i.jpg', afficherImage: false },
+        { titre: 'B', prixHTCents: 100, quantite: 1, tauxTVA: 20, imageFile: 'i.jpg', afficherImage: true }
+      ] },
+      imageUrls: { 'i.jpg': 'blob:factice' }
+    });
+    egal(m.lignes[0].imageUrl, null);
+    egal(m.lignes[1].imageUrl, 'blob:factice');
+  });
+
+  // ========================================================================
+  // Archive .devis
+  // ========================================================================
+
+  groupe('Archive .devis');
+
+  if (!App.archive.disponible()) {
+    ignorer('aller-retour complet', 'vendor/jszip.min.js absent — déposer le fichier puis relancer.');
+    ignorer('archive corrompue refusée', 'JSZip absent');
+    ignorer('schemaVersion inconnue refusée', 'JSZip absent');
+    ignorer('image manquante signalée', 'JSZip absent');
+  } else {
+
+    function blobFactice(octets) {
+      var a = new Uint8Array(octets || 64);
+      for (var i = 0; i < a.length; i++) a[i] = (i * 37) % 256;
+      return new Blob([a], { type: 'image/jpeg' });
+    }
+
+    test('aller-retour complet : écriture puis relecture', function () {
+      var data = App.schema.normalize({
+        schemaVersion: 1,
+        societe: { nom: 'KM Mécanique', logoFile: 'logo.png', regimeTVA: 'normal' },
+        catalogue: [App.schema.nouveauProduit({
+          reference: 'KM-1200', titre: 'Tour parallèle',
+          prixHTCents: 489000, imageFile: 'img-a.jpg'
+        })],
+        devis: [{
+          id: 'd1', numero: '2026-0042', dateEmission: '2026-08-07',
+          client: { nom: 'Fournier' },
+          lignes: [{ id: 'l1', titre: 'Tour', prixHTCents: 489000, quantite: 1, tauxTVA: 20, imageFile: 'img-a.jpg' }]
+        }]
+      });
+      var images = { 'logo.png': blobFactice(120), 'img-a.jpg': blobFactice(300) };
+
+      return App.archive.write(data, images).then(function (res) {
+        egal(res.imagesManquantes.length, 0);
+        assert(res.blob.size > 0, 'archive non vide');
+        return App.archive.read(res.blob);
+      }).then(function (relu) {
+        egal(relu.data.societe.nom, 'KM Mécanique');
+        egal(relu.data.catalogue.length, 1);
+        egal(relu.data.catalogue[0].reference, 'KM-1200');
+        egal(relu.data.devis[0].lignes[0].prixHTCents, 489000);
+        egal(Object.keys(relu.images).length, 2, 'les deux images doivent revenir');
+        assert(relu.images['img-a.jpg'] instanceof Blob, 'image relue en Blob natif');
+        egal(relu.images['img-a.jpg'].size, 300, 'octets préservés à l\'identique');
+        egal(relu.images['logo.png'].type, 'image/png', 'type MIME redonné d\'après l\'extension');
+        egal(relu.avertissements.length, 0);
+      });
+    });
+
+    test('archive corrompue refusée avec un message clair', function () {
+      var faux = new Blob(['ceci n\'est pas un zip'], { type: 'application/zip' });
+      return App.archive.read(faux).then(function () {
+        throw new Error('la lecture aurait dû échouer');
+      }, function (err) {
+        assert(/archive .devis valide|corrompu/i.test(err.message), 'message : ' + err.message);
+      });
+    });
+
+    test('schemaVersion inconnue refusée', function () {
+      var zip = new JSZip();
+      zip.file('data.json', JSON.stringify({ schemaVersion: 999, societe: {}, catalogue: [], devis: [] }));
+      return zip.generateAsync({ type: 'blob' }).then(function (b) {
+        return App.archive.read(b);
+      }).then(function () {
+        throw new Error('la lecture aurait dû échouer');
+      }, function (err) {
+        assert(/plus récente/.test(err.message), 'message : ' + err.message);
+      });
+    });
+
+    test('image manquante signalée sans bloquer la lecture', function () {
+      var zip = new JSZip();
+      zip.file('data.json', JSON.stringify({
+        schemaVersion: 1,
+        societe: {},
+        catalogue: [{ id: 'p1', reference: 'A', imageFile: 'introuvable.jpg' }],
+        devis: []
+      }));
+      return zip.generateAsync({ type: 'blob' }).then(function (b) {
+        return App.archive.read(b);
+      }).then(function (relu) {
+        egal(relu.data.catalogue.length, 1, 'le document reste lisible');
+        assert(relu.avertissements.some(function (a) { return /introuvable\.jpg/.test(a); }),
+          'l\'image manquante doit être signalée : ' + relu.avertissements.join(' / '));
+      });
+    });
+
+    test('data.json ne contient aucune image encodée', function () {
+      var data = App.schema.normalize({
+        schemaVersion: 1,
+        catalogue: [App.schema.nouveauProduit({ reference: 'A', imageFile: 'img-a.jpg' })]
+      });
+      return App.archive.write(data, { 'img-a.jpg': blobFactice(5000) })
+        .then(function (res) { return JSZip.loadAsync(res.blob); })
+        .then(function (zip) { return zip.file('data.json').async('string'); })
+        .then(function (texte) {
+          assert(texte.indexOf('base64') === -1 && texte.length < 4000,
+            'data.json doit rester léger et sans image encodée (' + texte.length + ' caractères)');
+        });
+    });
+
+    test('noms de fichiers déterministes et assainis', function () {
+      egal(App.archive.nomFichier({ base: 'devis-2026-0042', version: 3 }), 'devis-2026-0042-v3.devis');
+      egal(App.archive.slug('KM Mécanique SARL'), 'km-mecanique-sarl');
+    });
+  }
+
+  // ========================================================================
+  // IndexedDB
+  // ========================================================================
+
+  groupe('IndexedDB');
+
+  var CLE_TEST = '__test__';
+
+  test('aller-retour d\'une valeur JSON', function () {
+    return App.db.put(CLE_TEST, { a: 1, b: 'deux' })
+      .then(function () { return App.db.get(CLE_TEST); })
+      .then(function (v) {
+        egal(v.a, 1);
+        egal(v.b, 'deux');
+        return App.db.del(CLE_TEST);
+      });
+  });
+
+  test('aller-retour d\'un Blob natif, taille préservée', function () {
+    var blob = new Blob([new Uint8Array(2048)], { type: 'image/jpeg' });
+    var nom = '__test__.jpg';
+    return App.db.putImage(nom, blob)
+      .then(function () { return App.db.getImage(nom); })
+      .then(function (relu) {
+        assert(relu instanceof Blob, 'doit revenir en Blob, pas en base64');
+        egal(relu.size, 2048);
+        egal(relu.type, 'image/jpeg');
+        return App.db.delImage(nom);
+      });
+  });
+
+  test('un Blob relu ne contamine pas le canvas', function () {
+    // Le test décisif de toute l'architecture : si toDataURL lève une
+    // SecurityError ici, la génération d'images est impossible en file://.
+    var c = document.createElement('canvas');
+    c.width = 40; c.height = 30;
+    var g = c.getContext('2d');
+    g.fillStyle = '#14425f';
+    g.fillRect(0, 0, 40, 30);
+
+    return new Promise(function (resolve, reject) {
+      c.toBlob(function (blob) {
+        App.db.putImage('__test-canvas__.jpg', blob)
+          .then(function () { return App.db.getImage('__test-canvas__.jpg'); })
+          .then(function (relu) {
+            return new Promise(function (res, rej) {
+              var url = URL.createObjectURL(relu);
+              var img = new Image();
+              img.onload = function () {
+                try {
+                  var c2 = document.createElement('canvas');
+                  c2.width = img.naturalWidth; c2.height = img.naturalHeight;
+                  c2.getContext('2d').drawImage(img, 0, 0);
+                  var d = c2.toDataURL('image/jpeg', 0.8);
+                  assert(d.indexOf('data:image/jpeg') === 0, 'toDataURL doit réussir');
+                  URL.revokeObjectURL(url);
+                  res();
+                } catch (e) { URL.revokeObjectURL(url); rej(e); }
+              };
+              img.onerror = function () { URL.revokeObjectURL(url); rej(new Error('image blob: illisible')); };
+              img.src = url;
+            });
+          })
+          .then(function () { return App.db.delImage('__test-canvas__.jpg'); })
+          .then(resolve, reject);
+      }, 'image/jpeg', 0.8);
+    });
+  });
+
+  // ========================================================================
+  // Bilan
+  // ========================================================================
+
+  pile.then(function () {
+    var b = document.getElementById('bilan');
+    var total = stats.ok + stats.ko;
+    b.className = 'bilan ' + (stats.ko ? 'rouge' : 'vert');
+    b.innerHTML =
+      '<span class="gros">' + stats.ok + ' / ' + total + '</span>' +
+      '<span>' + (stats.ko ? stats.ko + ' échec(s)' : 'tous les tests passent') +
+      (stats.skip ? ' · ' + stats.skip + ' ignoré(s)' : '') + '</span>' +
+      '<button onclick="location.reload()">Relancer</button>';
+  });
+
+})();
+</script>
+
+</body>
+</html>

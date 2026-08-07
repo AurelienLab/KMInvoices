@@ -1,0 +1,11 @@
+# Réglages locaux de l'outillage
+.claude/
+
+# Fichiers système
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Documents de travail produits par l'application.
+# Un .devis contient des données client réelles : il n'a rien à faire ici.
+*.devis

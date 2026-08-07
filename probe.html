@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Probe — validation architecture file://</title>
+<style>
+  :root { --ok: #1a7f37; --ko: #b42318; --warn: #b54708; }
+  * { box-sizing: border-box; }
+  body {
+    font: 14px/1.5 "Segoe UI", system-ui, Arial, sans-serif;
+    margin: 0; padding: 24px; background: #f6f7f9; color: #1c1f23;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: #667085; margin: 0 0 20px; }
+  .bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+  button {
+    font: inherit; padding: 8px 14px; border: 1px solid #d0d5dd; border-radius: 6px;
+    background: #fff; cursor: pointer;
+  }
+  button:hover { background: #f0f1f3; }
+  button.primary { background: #1c1f23; color: #fff; border-color: #1c1f23; }
+  table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #e4e7ec; border-radius: 8px; overflow: hidden; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #eef0f3; vertical-align: top; }
+  th { background: #fafbfc; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: #667085; }
+  tr:last-child td { border-bottom: 0; }
+  .st { font-weight: 700; white-space: nowrap; }
+  .st.ok { color: var(--ok); }
+  .st.ko { color: var(--ko); }
+  .st.warn { color: var(--warn); }
+  .st.run { color: #667085; }
+  .det { color: #475467; font-family: ui-monospace, Consolas, monospace; font-size: 12px; word-break: break-word; }
+  .verdict { margin: 20px 0; padding: 14px 16px; border-radius: 8px; border: 1px solid #e4e7ec; background: #fff; font-weight: 600; }
+  .verdict.go { border-color: #a6f4c5; background: #ecfdf3; color: var(--ok); }
+  .verdict.nogo { border-color: #fecdca; background: #fef3f2; color: var(--ko); }
+  #canvasHost { margin-top: 16px; }
+  #canvasHost canvas { border: 1px solid #d0d5dd; border-radius: 6px; }
+
+  /* Bandeau de test des fonds a l'impression. */
+  .printband {
+    margin-top: 20px; padding: 14px 16px; border-radius: 8px;
+    background: #1c1f23; color: #fff;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .printband.noforce { background: #b42318; }
+  .printonly { display: none; }
+
+  @media print {
+    body { background: #fff; padding: 0; }
+    .bar, .sub, #results, .verdict { display: none; }
+    .printonly { display: block; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Probe — validation de l'architecture en <code>file://</code></h1>
+<p class="sub">Ouvrir ce fichier par double-clic dans Edge. Ne pas passer par un serveur : le but est de reproduire les conditions réelles du poste cible.</p>
+
+<div class="bar">
+  <button class="primary" id="runBtn">Lancer les tests</button>
+  <button id="printBtn">Tester l'impression</button>
+  <button id="clearBtn">Effacer la base de test</button>
+</div>
+
+<div id="verdict" class="verdict">Tests non lancés.</div>
+
+<table id="results">
+  <thead>
+    <tr><th style="width:38%">Test</th><th style="width:14%">Résultat</th><th>Détail</th></tr>
+  </thead>
+  <tbody id="tbody"></tbody>
+</table>
+
+<div id="canvasHost"></div>
+
+<div class="printband">
+  Bandeau à fond noir avec <code>print-color-adjust: exact</code>.
+  <strong>Doit apparaître noir sur l'aperçu d'impression</strong>, même si « Graphiques d'arrière-plan » est décoché.
+</div>
+<div class="printband noforce" style="-webkit-print-color-adjust: economy; print-color-adjust: economy;">
+  Bandeau rouge sans forçage. S'il disparaît à l'impression alors que le noir reste, le forçage fonctionne.
+</div>
+
+<div class="printonly">
+  <p style="margin-top:20px">Si ce texte s'affiche dans l'aperçu d'impression, <code>@media print</code> fonctionne.</p>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var DB_NAME = 'devisgen_probe_v1';
+  var STORE = 'blobs';
+  var tbody = document.getElementById('tbody');
+  var rows = {};
+  var results = [];
+
+  // --- Utilitaires d'affichage ---------------------------------------------
+
+  function addRow(key, label) {
+    var tr = document.createElement('tr');
+    var tdL = document.createElement('td'); tdL.textContent = label;
+    var tdS = document.createElement('td'); tdS.className = 'st run'; tdS.textContent = '…';
+    var tdD = document.createElement('td'); tdD.className = 'det'; tdD.textContent = '';
+    tr.appendChild(tdL); tr.appendChild(tdS); tr.appendChild(tdD);
+    tbody.appendChild(tr);
+    rows[key] = { status: tdS, detail: tdD };
+  }
+
+  function setRow(key, state, detail) {
+    var r = rows[key];
+    if (!r) return;
+    var labels = { ok: 'OK', ko: 'ÉCHEC', warn: 'PARTIEL', info: 'INFO' };
+    r.status.className = 'st ' + (state === 'info' ? 'run' : state);
+    r.status.textContent = labels[state] || state;
+    r.detail.textContent = detail || '';
+    results.push({ key: key, state: state });
+  }
+
+  // Tests dont l'echec condamne l'architecture.
+  var BLOCKING = ['idb-open', 'idb-blob', 'canvas-taint', 'download'];
+
+  function renderVerdict() {
+    var blockingFailed = results.filter(function (r) {
+      return BLOCKING.indexOf(r.key) !== -1 && r.state === 'ko';
+    });
+    var v = document.getElementById('verdict');
+    if (blockingFailed.length) {
+      v.className = 'verdict nogo';
+      v.textContent = 'NO-GO — test(s) bloquant(s) en échec : ' +
+        blockingFailed.map(function (r) { return r.key; }).join(', ') +
+        '. L\'architecture prévue ne tient pas sur ce poste.';
+    } else {
+      v.className = 'verdict go';
+      v.textContent = 'GO — tous les tests bloquants passent. IndexedDB, les Blob, le canvas non contaminé et le téléchargement fonctionnent en file://.';
+    }
+  }
+
+  // --- Wrapper IndexedDB minimal (préfiguration de 10-db.js) ---------------
+
+  function openDb() {
+    return new Promise(function (resolve, reject) {
+      if (!window.indexedDB) { reject(new Error('window.indexedDB absent')); return; }
+      var req = indexedDB.open(DB_NAME, 1);
+      req.onupgradeneeded = function () {
+        var db = req.result;
+        if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
+      };
+      req.onsuccess = function () { resolve(req.result); };
+      req.onerror = function () { reject(req.error || new Error('open a échoué')); };
+      req.onblocked = function () { reject(new Error('open bloqué par un autre onglet')); };
+    });
+  }
+
+  function tx(db, mode, fn) {
+    return new Promise(function (resolve, reject) {
+      var t = db.transaction(STORE, mode);
+      var store = t.objectStore(STORE);
+      var req = fn(store);
+      t.oncomplete = function () { resolve(req ? req.result : undefined); };
+      t.onerror = function () { reject(t.error); };
+      t.onabort = function () { reject(t.error || new Error('transaction annulée')); };
+    });
+  }
+
+  // --- Fabrication d'une image de test sans requête réseau -----------------
+
+  function makeTestBlob() {
+    return new Promise(function (resolve, reject) {
+      var c = document.createElement('canvas');
+      c.width = 240; c.height = 160;
+      var g = c.getContext('2d');
+      g.fillStyle = '#1c1f23'; g.fillRect(0, 0, 240, 160);
+      g.fillStyle = '#f79009'; g.fillRect(20, 20, 200, 60);
+      g.fillStyle = '#fff';
+      g.font = '16px "Segoe UI", sans-serif';
+      g.fillText('Image de test', 24, 118);
+      g.fillText(new Date().toLocaleTimeString('fr-FR'), 24, 142);
+      if (!c.toBlob) { reject(new Error('canvas.toBlob absent')); return; }
+      c.toBlob(function (b) {
+        if (b) resolve(b); else reject(new Error('toBlob a renvoyé null'));
+      }, 'image/jpeg', 0.8);
+    });
+  }
+
+  // --- Tests ---------------------------------------------------------------
+
+  function testEnv() {
+    var ua = navigator.userAgent;
+    var edge = /Edg\/([\d.]+)/.exec(ua);
+    setRow('env', 'info',
+      'origin=' + location.origin + ' · protocol=' + location.protocol +
+      ' · secureContext=' + window.isSecureContext +
+      ' · Edge=' + (edge ? edge[1] : 'non détecté'));
+  }
+
+  function testUuid() {
+    try {
+      if (crypto && typeof crypto.randomUUID === 'function') {
+        var id = crypto.randomUUID();
+        setRow('uuid', 'ok', id);
+      } else if (crypto && crypto.getRandomValues) {
+        setRow('uuid', 'warn', 'crypto.randomUUID absent — repli getRandomValues nécessaire dans l\'app');
+      } else {
+        setRow('uuid', 'ko', 'crypto.getRandomValues absent aussi');
+      }
+    } catch (e) {
+      setRow('uuid', 'ko', String(e));
+    }
+  }
+
+  function testEstimate() {
+    if (!navigator.storage || !navigator.storage.estimate) {
+      setRow('quota', 'warn', 'navigator.storage.estimate indisponible (non bloquant)');
+      return Promise.resolve();
+    }
+    return navigator.storage.estimate().then(function (e) {
+      var mb = function (n) { return n == null ? '?' : (n / 1048576).toFixed(1) + ' Mo'; };
+      setRow('quota', 'ok', 'quota=' + mb(e.quota) + ' · utilisé=' + mb(e.usage));
+    }, function (err) {
+      setRow('quota', 'warn', String(err));
+    });
+  }
+
+  var sharedDb = null;
+  var readBackBlob = null;
+
+  function testIdbOpen() {
+    return openDb().then(function (db) {
+      sharedDb = db;
+      setRow('idb-open', 'ok', 'base "' + DB_NAME + '" v' + db.version + ' ouverte');
+    }, function (err) {
+      setRow('idb-open', 'ko', String(err && err.message || err));
+      throw err;
+    });
+  }
+
+  function testIdbBlob() {
+    var original;
+    return makeTestBlob().then(function (blob) {
+      original = blob;
+      return tx(sharedDb, 'readwrite', function (s) { return s.put(blob, 'probe-image'); });
+    }).then(function () {
+      return tx(sharedDb, 'readonly', function (s) { return s.get('probe-image'); });
+    }).then(function (out) {
+      if (!out) throw new Error('relecture vide');
+      if (!(out instanceof Blob)) throw new Error('relu comme ' + Object.prototype.toString.call(out) + ' au lieu de Blob');
+      if (out.size !== original.size) throw new Error('taille différente : ' + original.size + ' → ' + out.size);
+      readBackBlob = out;
+      setRow('idb-blob', 'ok', 'Blob ' + out.type + ' de ' + out.size + ' octets écrit puis relu à l\'identique');
+    }, function (err) {
+      setRow('idb-blob', 'ko', String(err && err.message || err));
+      throw err;
+    });
+  }
+
+  // Le test central : un blob relu depuis IndexedDB ne doit pas contaminer
+  // le canvas, contrairement a une <img src="images/x.jpg"> relative.
+  function testCanvasTaint() {
+    if (!readBackBlob) { setRow('canvas-taint', 'ko', 'pas de blob à tester'); return Promise.resolve(); }
+    return new Promise(function (resolve) {
+      var url = URL.createObjectURL(readBackBlob);
+      var img = new Image();
+      img.onload = function () {
+        try {
+          var c = document.createElement('canvas');
+          c.width = img.naturalWidth; c.height = img.naturalHeight;
+          c.getContext('2d').drawImage(img, 0, 0);
+          var dataUrl = c.toDataURL('image/jpeg', 0.8);
+          document.getElementById('canvasHost').appendChild(c);
+          setRow('canvas-taint', 'ok',
+            'toDataURL() a renvoyé ' + dataUrl.length + ' caractères — canvas non contaminé');
+        } catch (e) {
+          setRow('canvas-taint', 'ko', e.name + ' : ' + e.message);
+        }
+        URL.revokeObjectURL(url);
+        resolve();
+      };
+      img.onerror = function () {
+        setRow('canvas-taint', 'ko', 'l\'image blob: n\'a pas pu être chargée');
+        URL.revokeObjectURL(url);
+        resolve();
+      };
+      img.src = url;
+    });
+  }
+
+  // Test du redimensionnement sans passer par <img>.
+  function testImageBitmap() {
+    if (!window.createImageBitmap || !readBackBlob) {
+      setRow('bitmap', 'warn', 'createImageBitmap indisponible — repli sur <img> + blob URL');
+      return Promise.resolve();
+    }
+    return createImageBitmap(readBackBlob).then(function (bmp) {
+      var c = document.createElement('canvas');
+      c.width = bmp.width; c.height = bmp.height;
+      c.getContext('2d').drawImage(bmp, 0, 0);
+      c.toDataURL('image/jpeg', 0.8);
+      bmp.close && bmp.close();
+      setRow('bitmap', 'ok', 'décodage direct du Blob en ' + c.width + '×' + c.height + ', canvas exportable');
+    }, function (err) {
+      setRow('bitmap', 'warn', String(err));
+    });
+  }
+
+  // Toute la strategie d'export repose la-dessus.
+  function testDownload() {
+    try {
+      var payload = new Blob(['test de téléchargement depuis file://'], { type: 'text/plain' });
+      var url = URL.createObjectURL(payload);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = 'probe-telechargement.txt';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+      setRow('download', 'ok',
+        'clic déclenché — VÉRIFIER MANUELLEMENT que "probe-telechargement.txt" arrive bien dans les téléchargements, sans blocage Edge');
+    } catch (e) {
+      setRow('download', 'ko', String(e));
+    }
+    return Promise.resolve();
+  }
+
+  // Si ceci passait, on gagnerait la sauvegarde in-place. Attendu : indisponible.
+  function testFsAccess() {
+    if (typeof window.showSaveFilePicker !== 'function') {
+      setRow('fsaccess', 'info', 'showSaveFilePicker absent — sauvegarde in-place impossible, conforme aux prévisions');
+      return Promise.resolve();
+    }
+    setRow('fsaccess', 'warn',
+      'showSaveFilePicker EXISTE — à tester à la main via le bouton dédié ; s\'il fonctionne, revoir la stratégie d\'export');
+    var btn = document.createElement('button');
+    btn.textContent = 'Tester showSaveFilePicker()';
+    btn.onclick = function () {
+      window.showSaveFilePicker({ suggestedName: 'test.devis' }).then(function () {
+        setRow('fsaccess', 'ok', 'showSaveFilePicker fonctionne réellement en file:// — sauvegarde in-place envisageable');
+      }, function (err) {
+        setRow('fsaccess', 'info', 'rejeté : ' + err.name + ' — ' + err.message);
+      });
+    };
+    document.querySelector('.bar').appendChild(btn);
+    return Promise.resolve();
+  }
+
+  function testJsZip() {
+    if (window.JSZip) {
+      setRow('jszip', 'ok', 'JSZip ' + (JSZip.version || '?') + ' chargé');
+    } else {
+      setRow('jszip', 'info', 'vendor/jszip.min.js non fourni — normal à ce stade, l\'app devra le détecter au démarrage');
+    }
+    return Promise.resolve();
+  }
+
+  function testLocalStorage() {
+    try {
+      localStorage.setItem('devisgen_probe', '1');
+      localStorage.removeItem('devisgen_probe');
+      setRow('ls', 'info', 'localStorage accessible — réservé aux préférences d\'UI, jamais aux données métier');
+    } catch (e) {
+      setRow('ls', 'info', 'localStorage inaccessible : ' + e.name + ' (sans conséquence)');
+    }
+    return Promise.resolve();
+  }
+
+  // --- Enchainement --------------------------------------------------------
+
+  function run() {
+    tbody.innerHTML = '';
+    rows = {};
+    results = [];
+    document.getElementById('canvasHost').innerHTML = '';
+    document.getElementById('verdict').className = 'verdict';
+    document.getElementById('verdict').textContent = 'Tests en cours…';
+
+    addRow('env', 'Environnement');
+    addRow('idb-open', 'IndexedDB — ouverture de la base');
+    addRow('idb-blob', 'IndexedDB — écriture puis relecture d\'un Blob');
+    addRow('canvas-taint', 'Canvas — dessin du Blob puis toDataURL()');
+    addRow('bitmap', 'createImageBitmap sur Blob (redimensionnement)');
+    addRow('download', 'Téléchargement Blob + <a download>');
+    addRow('quota', 'navigator.storage.estimate()');
+    addRow('uuid', 'crypto.randomUUID()');
+    addRow('fsaccess', 'File System Access API');
+    addRow('jszip', 'vendor/jszip.min.js');
+    addRow('ls', 'localStorage');
+
+    testEnv();
+    testUuid();
+
+    testIdbOpen()
+      .then(testIdbBlob)
+      .then(testCanvasTaint)
+      .then(testImageBitmap)
+      .catch(function () { /* deja reporte ligne par ligne */ })
+      .then(testDownload)
+      .then(testEstimate)
+      .then(testFsAccess)
+      .then(testJsZip)
+      .then(testLocalStorage)
+      .then(renderVerdict);
+  }
+
+  document.getElementById('runBtn').onclick = run;
+  document.getElementById('printBtn').onclick = function () { window.print(); };
+  document.getElementById('clearBtn').onclick = function () {
+    if (sharedDb) { sharedDb.close(); sharedDb = null; }
+    var req = indexedDB.deleteDatabase(DB_NAME);
+    req.onsuccess = function () { alert('Base de test supprimée.'); };
+    req.onerror = function () { alert('Suppression impossible : ' + req.error); };
+  };
+
+  run();
+})();
+</script>
+
+</body>
+</html>

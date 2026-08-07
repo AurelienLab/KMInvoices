@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Devis — générateur hors-ligne</title>
+
+<!-- Vue d'édition. Ne style jamais le document imprimable. -->
+<link rel="stylesheet" href="app.css">
+
+<!-- Templates de document. Chaque template = un .js + un .css, entièrement
+     portés sous .doc-root, donc sans effet sur la vue d'édition.
+     Ajouter une variante = déposer le dossier et ajouter deux lignes ici. -->
+<link rel="stylesheet" href="templates/default/template.css">
+</head>
+<body>
+
+<!-- ======================================================================
+     Écran de démarrage
+     ====================================================================== -->
+<div class="demarrage" id="demarrage" style="display:none">
+  <div class="demarrage-carte">
+
+    <div class="demarrage-tete">
+      <div class="demarrage-marque">
+        <div class="demarrage-logo">KM</div>
+        <div>
+          <div class="demarrage-titre">Générateur de devis</div>
+          <div class="demarrage-sous">Outil local — aucune donnée ne quitte ce poste</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="demarrage-alertes"></div>
+
+    <div class="demarrage-choix">
+
+      <button class="choix" id="choix-reprendre">
+        <span class="choix-ico">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/>
+          </svg>
+        </span>
+        <span class="choix-corps">
+          <span class="choix-titre">Reprendre la session</span>
+          <span class="choix-detail">Recherche du cache de reprise…</span>
+        </span>
+      </button>
+
+      <button class="choix" id="choix-ouvrir">
+        <span class="choix-ico">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 7a2 2 0 0 1 2-2h4l2 3h8a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+          </svg>
+        </span>
+        <span class="choix-corps">
+          <span class="choix-titre">Ouvrir un fichier .devis</span>
+          <span class="choix-detail">Ou faire glisser le fichier n'importe où sur cette page.</span>
+        </span>
+      </button>
+
+      <button class="choix" id="choix-nouveau">
+        <span class="choix-ico">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 5v14M5 12h14"/>
+          </svg>
+        </span>
+        <span class="choix-corps">
+          <span class="choix-titre">Nouveau document</span>
+          <span class="choix-detail">Repart d'un catalogue et d'une fiche société vides.</span>
+        </span>
+      </button>
+
+    </div>
+
+    <div class="demarrage-pied">
+      Le fichier <code>.devis</code> enregistré sur le disque est la source de vérité.
+      Le cache du navigateur ne sert qu'à reprendre le travail après une fermeture
+      accidentelle : il peut disparaître si Edge efface les données de site.
+    </div>
+
+  </div>
+</div>
+
+<!-- ======================================================================
+     Application
+     ====================================================================== -->
+<div class="app" id="app">
+
+  <header class="entete">
+    <div class="entete-marque">
+      <span class="pastille">KM</span>
+      <span>Devis</span>
+    </div>
+    <div class="entete-doc" id="entete-doc"></div>
+
+    <span class="entete-espace"></span>
+
+    <span class="etat-doc" id="etat-doc"></span>
+
+    <button class="btn" id="btn-nouveau" title="Nouveau document">Nouveau</button>
+    <button class="btn" id="btn-ouvrir" title="Ouvrir un fichier .devis">Ouvrir…</button>
+    <button class="btn btn-primaire" id="btn-enregistrer"
+            title="Enregistrer une nouvelle version du document (Ctrl+S)">
+      Enregistrer
+    </button>
+  </header>
+
+  <div class="corps">
+    <nav class="nav" id="nav"></nav>
+    <main class="vue" id="vue"></main>
+  </div>
+
+</div>
+
+<!-- Conteneur de montage du document au moment de l'impression. -->
+<div id="impression"></div>
+
+<div class="notifs" id="notifs"></div>
+
+<input type="file" id="fichier-devis" accept=".devis,application/zip" style="display:none">
+
+<!-- ======================================================================
+     ORDRE DE CHARGEMENT — SIGNIFICATIF, NE PAS RÉORDONNER.
+
+     Scripts classiques uniquement : pas de type="module", pas d'import.
+     Les modules ES sont soumis au CORS et échouent systématiquement en
+     file://, qui est l'origine réelle d'exécution de cet outil.
+
+       vendor/jszip.min.js  dépendance externe, fournie manuellement.
+                            Son absence est détectée au démarrage et
+                            signalée ; elle ne doit pas faire planter la page,
+                            d'où sa position AVANT le reste.
+
+       00-namespace   crée App et ses sous-espaces. Doit être premier.
+       10-db          wrapper IndexedDB (promesses). Aucune dépendance.
+       15-format      formatage fr-FR. AVANT 20-schema et 30-calc, qui s'en servent.
+       20-schema      forme des données, défauts, validation, migrations.
+       30-calc        moteur de calcul pur + construction du modèle de document.
+       40-archive     lecture/écriture .devis. Dépend de JSZip et de 20-schema.
+       45-images      redimensionnement au canvas. Dépend de 50-store pour
+                      l'écriture, mais seulement à l'appel, pas au chargement.
+       50-store       état applicatif, autosave, drapeau de modification.
+       60-ui-shell    coquille : en-tête, navigation, notifications.
+                      DOIT précéder les vues, qui s'enregistrent dans App.ui.vues.
+       60-ui-societe   \
+       60-ui-clients    \ vues d'édition. L'ordre entre elles fixe l'ordre
+       60-ui-catalogue  /  d'affichage dans la navigation.
+       60-ui-devis     /  60-ui-devis expose UI.creerDevisPour, appelé par
+                          la vue clients — au clic, donc l'ordre importe peu.
+       70-preview     montage du rendu pour l'aperçu et l'impression.
+
+       templates/*    chaque template s'enregistre dans App.templates.
+                      Doit précéder 99-boot, qui vérifie sa présence.
+
+       99-boot        DERNIER. Seul fichier qui déclenche quelque chose.
+     ====================================================================== -->
+
+<script src="vendor/jszip.min.js"></script>
+
+<script src="app/00-namespace.js"></script>
+<script src="app/10-db.js"></script>
+<script src="app/15-format.js"></script>
+<script src="app/20-schema.js"></script>
+<script src="app/30-calc.js"></script>
+<script src="app/40-archive.js"></script>
+<script src="app/45-images.js"></script>
+<script src="app/50-store.js"></script>
+<script src="app/60-ui-shell.js"></script>
+<script src="app/60-ui-societe.js"></script>
+<script src="app/60-ui-clients.js"></script>
+<script src="app/60-ui-catalogue.js"></script>
+<script src="app/60-ui-devis.js"></script>
+<script src="app/70-preview.js"></script>
+
+<script src="templates/default/template.js"></script>
+
+<script src="app/99-boot.js"></script>
+
+</body>
+</html>

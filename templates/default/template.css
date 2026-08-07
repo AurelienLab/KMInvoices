@@ -1,0 +1,569 @@
+/* ==========================================================================
+   templates/default/template.css
+
+   TOUT est porte sous .doc-root : ce fichier ne doit jamais influencer la
+   vue d'edition. Aucun selecteur ne commence ailleurs qu'a .doc-root.
+
+   Les tokens ci-dessous couvrent l'essentiel des personnalisations : couleur
+   d'accent, typographie, marges, largeur des images, filets, densite. On doit
+   pouvoir reskinner le document en n'editant que ce premier bloc.
+   ========================================================================== */
+
+.doc-root {
+  /* --- Couleurs --- */
+  --accent:            #14425f;   /* couleur d'accent : titres, filets forts */
+  --accent-clair:      #eaf1f5;   /* fonds discrets (en-tetes de tableau)    */
+  --encre:             #1a1d21;   /* texte principal                         */
+  --encre-douce:       #5b6570;   /* libelles, mentions secondaires          */
+  --papier:            #ffffff;
+
+  /* --- Filets --- */
+  --filet-couleur:     #d4dade;
+  --filet-fin:         0.4pt;
+  --filet-fort:        1.2pt;
+  --filet-accent:      2.4pt;
+
+  /* --- Typographie --- */
+  --police:            "Segoe UI", "Calibri", system-ui, Arial, sans-serif;
+  --police-titre:      "Segoe UI Semibold", "Segoe UI", "Calibri", Arial, sans-serif;
+  --police-chiffres:   "Segoe UI", "Calibri", Arial, sans-serif;
+  --corps:             9.4pt;     /* echelle typographique de base           */
+  --corps-petit:       8.2pt;
+  --corps-micro:       7.2pt;
+  --corps-titre-doc:   17pt;
+  --interligne:        1.42;
+
+  /* --- Page --- */
+  --marge-page:        15mm;      /* doit rester synchronise avec @page      */
+  --largeur-page:      210mm;
+
+  /* --- Lignes produit --- */
+  --lig-img-largeur:   26mm;      /* largeur de la vignette machine          */
+  --lig-img-hauteur:   20mm;
+  --lig-densite:       2.6mm;     /* padding vertical des cellules           */
+
+  /* --- Divers --- */
+  --rayon:             1.5mm;
+
+  /* ------------------------------------------------------------------ */
+
+  font-family: var(--police);
+  font-size: var(--corps);
+  line-height: var(--interligne);
+  color: var(--encre);
+  background: var(--papier);
+  /* Force l'impression des aplats meme si "Graphiques d'arriere-plan"
+     est decoche dans la boite de dialogue d'Edge. */
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.doc-root * { box-sizing: border-box; }
+
+/* --- Rendu ecran : feuille A4 posee sur un fond ------------------------- */
+
+.doc-root {
+  width: var(--largeur-page);
+  min-height: 297mm;
+  padding: var(--marge-page);
+  margin: 0 auto;
+  box-shadow: 0 1px 3px rgba(16, 24, 40, .12), 0 8px 24px rgba(16, 24, 40, .10);
+}
+
+/* ==========================================================================
+   Tableau porteur
+
+   Sert uniquement a obtenir un pied de page repete : <tfoot> en
+   table-footer-group se reimprime en bas de chaque feuille et, contrairement
+   a position: fixed, reserve reellement sa hauteur dans le flux. Le contenu
+   ne peut donc plus passer dessous.
+
+   Il ne doit produire AUCUN effet visuel : ni bordure, ni espacement.
+   ========================================================================== */
+
+.doc-root .doc-page {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.doc-root .doc-page > tbody > tr > td,
+.doc-root .doc-page > tfoot > tr > td {
+  padding: 0;
+  border: 0;
+  vertical-align: top;
+}
+
+.doc-root .doc-page > tfoot { display: table-footer-group; }
+
+/* ==========================================================================
+   En-tete
+   ========================================================================== */
+
+.doc-root .doc-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8mm;
+  padding-bottom: 3mm;
+  border-bottom: var(--filet-accent) solid var(--accent);
+}
+
+.doc-root .doc-emetteur { flex: 1 1 auto; min-width: 0; }
+
+.doc-root .doc-logo {
+  display: block;
+  max-width: 50mm;
+  max-height: 15mm;
+  object-fit: contain;
+  object-position: left top;
+  margin-bottom: 2mm;
+}
+
+.doc-root .doc-emetteur-nom {
+  font-family: var(--police-titre);
+  font-size: 13pt;
+  font-weight: 700;
+  letter-spacing: -.01em;
+  color: var(--accent);
+  margin-bottom: 1.2mm;
+}
+
+.doc-root .doc-emetteur-adr,
+.doc-root .doc-emetteur-contact,
+.doc-root .doc-emetteur-ids {
+  font-size: var(--corps-petit);
+  color: var(--encre-douce);
+}
+
+.doc-root .doc-emetteur-contact { margin-top: 1.6mm; }
+
+.doc-root .doc-emetteur-ids {
+  margin-top: 1.6mm;
+  font-size: var(--corps-micro);
+}
+
+/* Cartouche a droite */
+
+.doc-root .doc-meta {
+  flex: 0 0 62mm;
+  text-align: right;
+}
+
+.doc-root .doc-titre {
+  font-family: var(--police-titre);
+  font-size: var(--corps-titre-doc);
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.doc-root .doc-numero {
+  font-family: var(--police-chiffres);
+  font-size: 11pt;
+  font-weight: 600;
+  color: var(--encre);
+  margin-top: .5mm;
+}
+
+.doc-root .doc-meta-liste { margin-top: 2mm; }
+
+.doc-root .kv {
+  display: flex;
+  justify-content: flex-end;
+  gap: 3mm;
+  font-size: var(--corps-petit);
+  padding: .5mm 0;
+}
+
+.doc-root .kv-k { color: var(--encre-douce); }
+.doc-root .kv-v { font-weight: 600; min-width: 32mm; text-align: right; }
+
+/* ==========================================================================
+   Bloc client
+   ========================================================================== */
+
+.doc-root .doc-bloc-titre {
+  font-size: var(--corps-micro);
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--encre-douce);
+  margin-bottom: 1.5mm;
+}
+
+.doc-root .doc-client {
+  margin-top: 4mm;
+  margin-left: auto;
+  width: 82mm;
+  padding: 3mm 4mm;
+  background: var(--accent-clair);
+  border-left: var(--filet-fort) solid var(--accent);
+  border-radius: 0 var(--rayon) var(--rayon) 0;
+  break-inside: avoid;
+}
+
+.doc-root .doc-client-nom {
+  font-family: var(--police-titre);
+  font-size: 10.5pt;
+  font-weight: 700;
+}
+
+.doc-root .doc-client-contact {
+  font-size: var(--corps-petit);
+  color: var(--encre-douce);
+  margin-bottom: 1mm;
+}
+
+.doc-root .doc-client-adr { font-size: var(--corps-petit); }
+
+.doc-root .doc-client-contacts {
+  margin-top: 1.5mm;
+  font-size: var(--corps-micro);
+  color: var(--encre-douce);
+}
+
+/* ==========================================================================
+   Tableau des lignes
+   ========================================================================== */
+
+.doc-root .doc-lignes {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 5mm;
+  table-layout: fixed;
+}
+
+/* L'en-tete se repete en haut de chaque page imprimee. */
+.doc-root .doc-lignes thead { display: table-header-group; }
+
+.doc-root .doc-lignes th {
+  font-size: var(--corps-micro);
+  font-weight: 700;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--papier);
+  background: var(--accent);
+  padding: 2mm 2.5mm;
+  text-align: right;
+  vertical-align: middle;
+}
+
+.doc-root .doc-lignes th.c-des { text-align: left; }
+
+.doc-root .doc-lignes td {
+  padding: var(--lig-densite) 2.5mm;
+  border-bottom: var(--filet-fin) solid var(--filet-couleur);
+  vertical-align: top;
+  text-align: right;
+}
+
+.doc-root .doc-lignes td.c-des { text-align: left; }
+
+/* Chaque ligne produit reste d'un seul tenant. */
+.doc-root .doc-ligne { break-inside: avoid; page-break-inside: avoid; }
+
+/* Largeurs de colonnes */
+.doc-root .c-des { width: auto; }
+.doc-root .c-qte { width: 15mm; }
+.doc-root .c-pu  { width: 22mm; }
+.doc-root .c-rem { width: 16mm; }
+.doc-root .c-tva { width: 14mm; }
+.doc-root .c-tot { width: 24mm; }
+
+/* Cellule designation : vignette + texte */
+
+.doc-root .lig-wrap { display: flex; gap: 3.5mm; align-items: flex-start; }
+
+.doc-root .lig-img {
+  flex: 0 0 var(--lig-img-largeur);
+  width: var(--lig-img-largeur);
+  height: var(--lig-img-hauteur);
+  border: var(--filet-fin) solid var(--filet-couleur);
+  border-radius: var(--rayon);
+  background: #fbfcfd;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* contain : on ne recadre jamais une machine. */
+.doc-root .lig-img img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.doc-root .lig-txt { flex: 1 1 auto; min-width: 0; }
+
+.doc-root .lig-ref {
+  font-family: var(--police-chiffres);
+  font-size: var(--corps-micro);
+  letter-spacing: .06em;
+  color: var(--encre-douce);
+}
+
+.doc-root .lig-titre {
+  font-family: var(--police-titre);
+  font-weight: 700;
+  font-size: 9.8pt;
+  line-height: 1.25;
+  margin: .3mm 0 .8mm;
+}
+
+.doc-root .lig-desc {
+  font-size: var(--corps-petit);
+  color: var(--encre-douce);
+  line-height: 1.35;
+}
+
+.doc-root .lig-qte-n { font-weight: 600; }
+.doc-root .lig-unite { font-size: var(--corps-micro); color: var(--encre-douce); }
+
+.doc-root .c-pu, .doc-root .c-tot { font-family: var(--police-chiffres); }
+.doc-root .c-tot { font-weight: 700; }
+.doc-root .c-rem { color: var(--encre-douce); }
+.doc-root .c-tva { color: var(--encre-douce); font-size: var(--corps-petit); }
+
+/* ==========================================================================
+   Synthese : recapitulatif de TVA + totaux
+   ========================================================================== */
+
+.doc-root .doc-synthese {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10mm;
+  margin-top: 5mm;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.doc-root .doc-tva { flex: 0 1 78mm; }
+
+.doc-root .doc-tva-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--corps-petit);
+}
+
+.doc-root .doc-tva-table th {
+  text-align: right;
+  font-size: var(--corps-micro);
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--encre-douce);
+  padding: 1.2mm 2mm;
+  border-bottom: var(--filet-fin) solid var(--filet-couleur);
+}
+
+.doc-root .doc-tva-table th:first-child { text-align: left; }
+
+.doc-root .doc-tva-table td {
+  text-align: right;
+  padding: 1.2mm 2mm;
+  border-bottom: var(--filet-fin) solid var(--filet-couleur);
+  font-family: var(--police-chiffres);
+}
+
+.doc-root .doc-tva-table td.tva-taux { text-align: left; }
+
+/* Totaux */
+
+.doc-root .doc-totaux { flex: 0 0 78mm; }
+
+.doc-root .tot-l {
+  display: flex;
+  justify-content: space-between;
+  gap: 5mm;
+  padding: 1.6mm 3mm;
+  border-bottom: var(--filet-fin) solid var(--filet-couleur);
+}
+
+.doc-root .tot-k { color: var(--encre-douce); }
+
+.doc-root .tot-v {
+  font-family: var(--police-chiffres);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.doc-root .tot-remise .tot-v { color: var(--accent); }
+
+.doc-root .tot-ttc {
+  margin-top: .8mm;
+  padding: 2.6mm 3mm;
+  background: var(--accent);
+  border-bottom: 0;
+  border-radius: var(--rayon);
+}
+
+.doc-root .tot-ttc .tot-k {
+  color: var(--papier);
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  font-size: var(--corps-petit);
+  align-self: center;
+}
+
+.doc-root .tot-ttc .tot-v {
+  color: var(--papier);
+  font-size: 13pt;
+  font-weight: 700;
+}
+
+.doc-root .tot-acompte { margin-top: 2mm; border-top: var(--filet-fin) solid var(--filet-couleur); }
+.doc-root .tot-reste .tot-v { font-weight: 700; }
+
+/* ==========================================================================
+   Conditions, observations, mentions
+   ========================================================================== */
+
+.doc-root .doc-conditions {
+  display: flex;
+  gap: 8mm;
+  flex-wrap: wrap;
+  margin-top: 6mm;
+  padding-top: 3mm;
+  border-top: var(--filet-fin) solid var(--filet-couleur);
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.doc-root .doc-cond-bloc { flex: 1 1 70mm; min-width: 60mm; }
+
+.doc-root .doc-cond-corps {
+  font-size: var(--corps-petit);
+  color: var(--encre-douce);
+}
+
+.doc-root .doc-mention-tva {
+  flex: 1 1 100%;
+  margin-top: 2mm;
+  font-size: var(--corps-petit);
+  font-style: italic;
+  color: var(--encre);
+}
+
+/* ==========================================================================
+   Bon pour accord
+   ========================================================================== */
+
+.doc-root .doc-signature {
+  display: flex;
+  gap: 8mm;
+  align-items: stretch;
+  margin-top: 5mm;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.doc-root .sig-gauche { flex: 1 1 auto; }
+
+.doc-root .sig-titre {
+  font-family: var(--police-titre);
+  font-weight: 700;
+  font-size: 10pt;
+  color: var(--accent);
+  margin-bottom: 1mm;
+}
+
+.doc-root .sig-consigne,
+.doc-root .sig-validite {
+  font-size: var(--corps-petit);
+  color: var(--encre-douce);
+}
+
+.doc-root .sig-validite { margin-top: 1.5mm; }
+
+.doc-root .sig-cadre {
+  flex: 0 0 72mm;
+  min-height: 32mm;
+  padding: 3mm 4mm;
+  border: var(--filet-fin) solid var(--encre-douce);
+  border-radius: var(--rayon);
+}
+
+.doc-root .sig-cadre-l {
+  font-size: var(--corps-petit);
+  color: var(--encre-douce);
+  padding-bottom: 1.5mm;
+  margin-bottom: 2.5mm;
+  border-bottom: var(--filet-fin) dotted var(--filet-couleur);
+}
+
+.doc-root .sig-cadre-sign { border-bottom: 0; margin-bottom: 0; }
+
+/* ==========================================================================
+   Pied de page
+   ========================================================================== */
+
+.doc-root .doc-pied {
+  margin-top: 6mm;
+  padding-top: 2.5mm;
+  border-top: var(--filet-fin) solid var(--filet-couleur);
+  font-size: var(--corps-micro);
+  color: var(--encre-douce);
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 5mm;
+}
+
+.doc-root .pied-l { display: flex; gap: 1.5mm; flex-wrap: wrap; }
+.doc-root .pied-sep { color: var(--filet-couleur); }
+.doc-root .pied-mentions { flex: 1 1 auto; text-align: center; }
+.doc-root .pied-doc { white-space: nowrap; font-weight: 600; }
+
+/* ==========================================================================
+   Impression — seul endroit ou l'ecran et le papier divergent.
+   ========================================================================== */
+
+@media print {
+
+  /* Doit rester synchronise avec --marge-page. Une variable CSS ne peut pas
+     etre utilisee ici : @page ne voit pas les customs properties de .doc-root. */
+  @page {
+    size: A4 portrait;
+    margin: 15mm;
+  }
+
+  .doc-root {
+    width: auto;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    box-shadow: none;
+  }
+
+  /*
+   * Le pied est repete par le <tfoot> du tableau porteur, pas par
+   * position: fixed. Ne PAS revenir a un pied fixe : il se repete bien, mais
+   * ne reserve aucune place, et le contenu s'imprime dessous.
+   *
+   * Si une page blanche apparait en tete d'impression, la cause n'est pas ici
+   * mais dans un conteneur de la vue d'edition qui survit avec une hauteur
+   * non nulle : c'est ce qu'avait fait .app avec son height: 100%.
+   */
+  .doc-root .doc-pied {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Bloc de synthese et cadre de signature : jamais coupes en deux. Ils
+     basculent entierement sur la feuille suivante s'ils ne tiennent pas. */
+  .doc-root .doc-synthese,
+  .doc-root .doc-signature,
+  .doc-root .doc-conditions,
+  .doc-root .doc-totaux,
+  .doc-root .doc-tva {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}

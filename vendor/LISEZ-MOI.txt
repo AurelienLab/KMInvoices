@@ -1,0 +1,19 @@
+Déposer ici le fichier :
+
+    jszip.min.js
+
+Build UMD de JSZip 3.10.x, chargeable par une balise <script> classique.
+Ne PAS prendre un build ESM : les modules ES sont soumis au CORS et échouent
+systématiquement en file://.
+
+Récupérer le fichier sur un poste connecté, puis le copier ici :
+
+    https://github.com/Stuk/jszip/releases
+    ou le fichier dist/jszip.min.js d'une archive du dépôt
+
+Vérification : ouvrir index.html. Si le bandeau « JSZip est introuvable »
+apparaît sur l'écran de démarrage, le fichier n'est pas au bon endroit ou
+n'est pas un build UMD.
+
+Sans JSZip, l'application démarre quand même, mais l'ouverture et
+l'enregistrement de fichiers .devis sont impossibles.
