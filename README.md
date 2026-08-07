@@ -475,6 +475,13 @@ résidu d'arrondi étant absorbé par la plus grosse base.
 
 ---
 
+## Feuille de route
+
+- [Système de mise à jour depuis l'interface](docs/plan-mise-a-jour.md) — cadrage écrit,
+  non implémenté.
+
+---
+
 ## Licence et état
 
 Prototype fonctionnel, version `0.1.0-poc`. Usage interne.
