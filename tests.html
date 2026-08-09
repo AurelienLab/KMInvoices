@@ -13,6 +13,7 @@
 <script src="app/20-schema.js"></script>
 <script src="app/30-calc.js"></script>
 <script src="app/40-archive.js"></script>
+<script src="app/80-maj.js"></script>
 
 <style>
   * { box-sizing: border-box; }
@@ -768,6 +769,54 @@
           .then(resolve, reject);
       }, 'image/jpeg', 0.8);
     });
+  });
+
+  // ========================================================================
+  // Vérification de version
+  //
+  // Seule la comparaison est testable ici : c'est une fonction pure. Le reste
+  // de 80-maj.js dépend du réseau et du DOM, et se valide dans probe.html et
+  // à la main. Une comparaison fausse proposerait une mise à jour vers une
+  // version plus ancienne — d'où ces cas.
+  // ========================================================================
+
+  groupe('Vérification de version');
+
+  var cmp = App.maj.comparerVersions;
+
+  test('ordre numérique sur les trois nombres', function () {
+    egal(cmp('0.1.0', '0.2.0'), -1);
+    egal(cmp('0.2.0', '0.1.0'), 1);
+    egal(cmp('0.1.0', '0.1.0'), 0);
+    egal(cmp('0.9.0', '0.10.0'), -1, 'comparaison numérique, pas alphabétique');
+    egal(cmp('1.0.0', '0.99.99'), 1);
+    egal(cmp('0.1.9', '0.1.10'), -1);
+  });
+
+  test('une pré-version précède la version stable de même numéro', function () {
+    egal(cmp('0.1.0-poc', '0.1.0'), -1);
+    egal(cmp('0.1.0', '0.1.0-poc'), 1);
+    egal(cmp('0.1.0-poc', '0.1.0-poc'), 0);
+  });
+
+  test('pré-versions comparées identifiant par identifiant', function () {
+    egal(cmp('0.1.0-alpha', '0.1.0-beta'), -1);
+    egal(cmp('0.1.0-rc.1', '0.1.0-rc.2'), -1);
+    egal(cmp('0.1.0-rc.2', '0.1.0-rc.10'), -1, 'identifiants numériques comparés en nombres');
+    egal(cmp('0.1.0-rc', '0.1.0-rc.1'), -1, 'la plus courte précède');
+  });
+
+  test('version illisible : égalité, donc aucune proposition', function () {
+    egal(cmp('0.1.0', 'nawak'), 0);
+    egal(cmp('', '0.1.0'), 0);
+    egal(cmp('0.1.0', null), 0);
+    egal(cmp('1.2', '1.3'), 0, 'un numéro incomplet ne doit rien déclencher');
+  });
+
+  test('la version qui s\'exécute est lisible par le comparateur', function () {
+    // Sinon la vérification serait silencieusement inopérante pour toujours.
+    assert(cmp(App.version, App.version) === 0 && cmp(App.version, '99.0.0') === -1,
+      'App.version = ' + App.version + ' n\'est pas au format X.Y.Z[-pre]');
   });
 
   // ========================================================================

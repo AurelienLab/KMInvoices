@@ -35,6 +35,13 @@ SOURCE = RACINE / 'index.html'
 SORTIE = RACINE / 'dist' / 'KMInvoices.html'
 NAMESPACE = RACINE / 'app' / '00-namespace.js'
 
+# Gabarit de l'URL de release. Doit rester cohérent avec App.maj.URL_VERSION,
+# qui pointe le version.json produit ici, ET avec le nom de tag calculé par
+# .github/workflows/livrable.yml — le `v` est écrit aux deux endroits. Le
+# workflow vérifie que l'URL annoncée répond 200 : c'est ce contrôle qui
+# rattrape une divergence entre les deux.
+URL_RELEASE = 'https://github.com/AurelienLab/KMInvoices/releases/download/v{v}/KMInvoices.html'
+
 # Les deux seules formes de référence externe utilisées par index.html.
 # Volontairement strictes : une balise écrite autrement doit faire échouer le
 # build plutôt que produire un livrable amputé sans le dire.
@@ -61,6 +68,18 @@ def version_source() -> str:
     if not m:
         raise SystemExit(f'ERREUR — App.version introuvable dans {NAMESPACE}')
     return m.group(1)
+
+
+def schema_version_source() -> int:
+    """Même principe : lue, jamais redéclarée.
+
+    Publiée dans version.json pour qu'un poste resté sur l'ancienne version
+    sache que les `.devis` de la nouvelle ne lui seront plus lisibles.
+    """
+    m = re.search(r'App\.schemaVersion\s*=\s*(\d+)', lire(NAMESPACE))
+    if not m:
+        raise SystemExit(f'ERREUR — App.schemaVersion introuvable dans {NAMESPACE}')
+    return int(m.group(1))
 
 
 def neutraliser_fermeture(contenu: str, balise: str) -> str:
@@ -94,7 +113,27 @@ def inliner(html: str, banniere: str) -> str:
     return RE_JS.sub(js, RE_CSS.sub(css, html))
 
 
-def construire(sortie: Path) -> Path:
+def ecrire_version_json(sortie: Path, version: str, url: str, notes: str) -> Path:
+    """Manifeste lu par `App.maj` (app/80-maj.js).
+
+    À publier À LA MAIN, et seulement une fois la release réellement en ligne :
+    un manifeste qui annonce une version dont le fichier n'existe pas encore
+    envoie tous les postes vers une URL morte.
+    """
+    manifeste = {
+        'version': version,
+        'date': datetime.date.today().isoformat(),
+        'url': url,
+        'schemaVersion': schema_version_source(),
+        'notes': notes,
+    }
+    chemin = sortie.parent / 'version.json'
+    chemin.write_text(json.dumps(manifeste, ensure_ascii=False, indent=2) + '\n',
+                      encoding='utf-8')
+    return chemin
+
+
+def construire(sortie: Path, notes: str = '', url: str = '') -> Path:
     html = lire(SOURCE)
     version = version_source()
     date = datetime.datetime.now().astimezone().isoformat(timespec='seconds')
@@ -128,11 +167,16 @@ def construire(sortie: Path) -> Path:
     sortie.parent.mkdir(parents=True, exist_ok=True)
     sortie.write_text(produit, encoding='utf-8')
 
+    manifeste = ecrire_version_json(sortie, version, url or URL_RELEASE.format(v=version), notes)
+
     print(f'{sortie.relative_to(RACINE)} — {len(produit.encode("utf-8")) / 1024:.0f} Ko')
     print(f'  version {version}')
     print(f'  {len(css)} feuille(s) de style, {len(js)} script(s) inlinés :')
     for chemin in css + js:
         print(f'    {chemin}')
+    print(f'{manifeste.relative_to(RACINE)}')
+    print('  À publier À LA MAIN sur la branche main, et seulement une fois la')
+    print('  release en ligne : les postes le lisent au démarrage.')
     return sortie
 
 
@@ -141,8 +185,12 @@ def main() -> int:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('-o', '--sortie', type=Path, default=SORTIE,
                     help=f'chemin du fichier produit (défaut : {SORTIE.relative_to(RACINE)})')
+    ap.add_argument('-n', '--notes', default='',
+                    help='une phrase de nouveautés, affichée dans le bandeau de mise à jour')
+    ap.add_argument('-u', '--url', default='',
+                    help=f'URL de téléchargement du livrable (défaut : {URL_RELEASE})')
     args = ap.parse_args()
-    construire(args.sortie.resolve())
+    construire(args.sortie.resolve(), args.notes, args.url)
     return 0
 
 

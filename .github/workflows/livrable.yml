@@ -1,0 +1,176 @@
+# Construit le livrable en fichier unique, et publie une release quand la
+# version change.
+#
+# DÉCLENCHEMENT : chaque push sur main. Mais une release n'est créée QUE si
+# `v<App.version>` n'existe pas déjà. Autrement dit, c'est la modification de
+# `App.version` dans app/00-namespace.js qui publie, pas le push. Corriger une
+# faute dans le README ne coupe pas une version.
+#
+# ORDRE DES ÉTAPES : release d'abord, `version.json` sur main ensuite. Ce
+# fichier est ce que lisent tous les postes au démarrage (app/80-maj.js) :
+# publié avant la release, il les enverrait vers une URL qui n'existe pas
+# encore. C'est précisément la faute que ce workflow existe pour rendre
+# impossible.
+
+name: Livrable
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      notes:
+        description: "Phrase de nouveautés affichée dans le bandeau de mise à jour"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  # Deux publications simultanées se marcheraient dessus sur le push de
+  # version.json. Jamais d'annulation en vol : une release à moitié faite est
+  # pire qu'une release en retard.
+  group: livrable
+  cancel-in-progress: false
+
+jobs:
+  livrable:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Uniquement pour `node --check` dans outils/verifier.py. Le livrable,
+      # lui, n'a aucune dépendance : il s'exécute dans un navigateur, en file://.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Lire la version des sources
+        id: v
+        run: |
+          set -euo pipefail
+          version=$(sed -n "s/.*App\.version = '\([^']*\)'.*/\1/p" app/00-namespace.js)
+          if [ -z "$version" ]; then
+            echo "App.version introuvable dans app/00-namespace.js" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+          echo "Version des sources : $version"
+
+      - name: Construire
+        # Passé par l'environnement, jamais interpolé dans le script : une
+        # expression ${{ }} est substituée textuellement avant que bash ne
+        # la voie, et le contenu de `notes` est saisi à la main.
+        env:
+          NOTES: ${{ inputs.notes }}
+        run: |
+          set -euo pipefail
+          notes="$NOTES"
+          # À défaut, le sujet du commit. D'où l'intérêt de soigner celui qui
+          # fait évoluer App.version : il devient le texte du bandeau, lu par
+          # quelqu'un qui n'a jamais entendu parler de Conventional Commits.
+          # Le préfixe `type(scope):` est donc retiré, et la phrase capitalisée.
+          if [ -z "$notes" ]; then
+            notes=$(git log -1 --pretty=%s | python3 -c "import re,sys; s=re.sub(r'^[a-z]+(\([^)]*\))?!?:\s*','',sys.stdin.read().strip()); print(s[:1].upper()+s[1:])")
+          fi
+          echo "Notes de version : $notes"
+          python3 outils/build.py --notes "$notes"
+
+      - name: Vérifier le livrable
+        run: python3 outils/verifier.py
+
+      # Toujours, y compris sur les pull requests : c'est ce qui permet de
+      # tester un livrable avant de le publier.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: KMInvoices-${{ steps.v.outputs.version }}
+          path: |
+            dist/KMInvoices.html
+            dist/version.json
+          if-no-files-found: error
+
+      - name: La release existe-t-elle déjà ?
+        id: release
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.v.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "publier=non" >> "$GITHUB_OUTPUT"
+            echo "::notice::$TAG existe déjà — rien à publier. Faire évoluer App.version pour publier une version."
+            exit 0
+          fi
+
+          # Tag présent mais sans release : refuser de publier. `gh release
+          # create` réutiliserait le tag existant en ignorant --target, et
+          # produirait une release dont les fichiers ne correspondent pas au
+          # commit tagué. Un tag orphelin vient forcément d'une release
+          # supprimée à la main : c'est à l'humain de décider quoi en faire.
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "::error::Le tag $TAG existe sans release correspondante. Supprimer le tag (git push origin :refs/tags/$TAG) pour republier cette version, ou faire évoluer App.version."
+            exit 1
+          fi
+
+          echo "publier=oui" >> "$GITHUB_OUTPUT"
+
+      - name: Publier la release
+        if: steps.release.outputs.publier == 'oui'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          # Une version portant un suffixe — 0.1.0-poc, 0.2.0-rc.1 — est une
+          # pré-version au sens semver, et App.maj.comparerVersions la traite
+          # comme telle. La release doit dire la même chose.
+          prerelease=""
+          case "${{ steps.v.outputs.version }}" in
+            *-*) prerelease="--prerelease" ;;
+          esac
+
+          gh release create "${{ steps.v.outputs.tag }}" \
+            dist/KMInvoices.html \
+            --title "KMInvoices ${{ steps.v.outputs.version }}" \
+            --notes "$(python3 -c 'import json;print(json.load(open("dist/version.json"))["notes"])')" \
+            --target "$GITHUB_SHA" \
+            $prerelease
+
+      # APRÈS la release, jamais avant. L'URL que ce fichier annonce doit
+      # exister au moment où un poste la lit.
+      - name: Publier le manifeste sur main
+        if: steps.release.outputs.publier == 'oui'
+        run: |
+          set -euo pipefail
+          cp dist/version.json version.json
+          # `git status`, pas `git diff` : à la première publication le fichier
+          # n'est pas encore suivi, et `git diff` ne verrait rien à commiter.
+          if [ -z "$(git status --porcelain -- version.json)" ]; then
+            echo "manifeste déjà à jour"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add version.json
+          # [skip ci] par précaution : un push avec GITHUB_TOKEN ne redéclenche
+          # pas les workflows, mais l'étape ne doit pas dépendre de ce détail.
+          git commit -m "chore: manifeste de la version ${{ steps.v.outputs.version }} [skip ci]"
+          git push origin HEAD:main
+
+      - name: Vérifier que le manifeste pointe une URL vivante
+        if: steps.release.outputs.publier == 'oui'
+        run: |
+          set -euo pipefail
+          url=$(python3 -c 'import json;print(json.load(open("dist/version.json"))["url"])')
+          code=$(curl -sSL -o /dev/null -w '%{http_code}' "$url")
+          echo "$url -> $code"
+          # Le poste qui lira ce manifeste suivra cette URL. Si elle est morte,
+          # le workflow doit échouer bruyamment plutôt que de laisser tout le
+          # parc face à un bouton « Mettre à jour » qui ne mène nulle part.
+          [ "$code" = "200" ]

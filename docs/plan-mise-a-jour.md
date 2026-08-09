@@ -1,12 +1,50 @@
 # Plan — système de mise à jour depuis l'interface
 
-**État : phase 1 faite, phase 2 en attente d'un test terrain.**
+**État : implémenté.** Les deux phases sont en place et validées sur le poste cible.
 
 | | |
 |---|---|
 | Phase 1 — livrable en fichier unique | fait, `outils/build.py` |
-| Prérequis phase 2 — test d'accès réseau | outillé dans `probe.html`, **à lancer sur le poste cible** |
-| Phase 2 — vérification de version | non commencée, et conditionnée au résultat ci-dessus |
+| Prérequis phase 2 — test d'accès réseau | **OK sur le poste cible**, `probe.html` |
+| Phase 2 — vérification de version | fait, `app/80-maj.js` |
+
+Ce document reste le lieu où sont consignés les arbitrages. Il n'y a plus rien à
+construire : publier une version, c'est faire évoluer `App.version` et pousser sur `main`.
+
+## Publication automatisée
+
+`.github/workflows/livrable.yml` — ajouté après coup, et qui change la nature du risque.
+
+Le cadrage initial listait une procédure manuelle en quatre étapes dont deux ne devaient
+jamais être inversées. Une procédure de ce genre finit toujours par être exécutée de
+travers un vendredi soir. Le workflow la tient à notre place :
+
+- **Ce qui déclenche une publication, c'est le changement de `App.version`**, pas le push.
+  Si `v<version>` existe déjà, le workflow construit, vérifie, et s'arrête. Sans quoi la
+  moindre correction de typo dans le README couperait une release.
+- **Release d'abord, `version.json` ensuite**, puis contrôle que l'URL annoncée répond
+  `200`. Un manifeste qui pointe une URL morte envoie tout le parc sur un bouton
+  « Mettre à jour » qui ne mène nulle part : c'est le pire échec possible du dispositif,
+  et il échoue désormais bruyamment dans la CI plutôt que silencieusement sur les postes.
+- **`outils/verifier.py` garde le livrable.** Le build ne peut pas se contrôler lui-même :
+  un `</script>` mal échappé ou une balise oubliée produisent un fichier qui se télécharge
+  très bien et ne s'ouvre pas. Le vérificateur est testé contre trois cassures réelles —
+  référence locale réintroduite, version divergente, `</script>` littéral — et les
+  attrape toutes.
+- **Chaque pull request produit un livrable téléchargeable.** C'est ce qui permet
+  d'essayer un fichier unique avant de le publier, sans rien graver.
+- **Le tag git n'existe pas comme source.** Il est créé par `gh release create`, sur le
+  commit poussé. Poser un tag à la main introduirait une seconde vérité qui divergerait
+  de `App.version` — et rien, dans le fichier livré, ne dit d'où vient le tag.
+
+  Un cas mérite le détour : **tag présent, release absente**, ce qui arrive dès qu'on
+  supprime une release à la main. `gh release create` réutilise alors le tag existant et
+  ignore `--target` : on obtiendrait une release dont les fichiers ne correspondent pas
+  au commit tagué. Le workflow détecte ce cas et échoue avec la commande de suppression
+  du tag, plutôt que de publier un mensonge.
+
+Limite connue : le workflow pousse un commit sur `main`. Une protection de branche qui
+l'interdirait bloquerait cette seule étape — la release, elle, serait déjà faite.
 
 ---
 
@@ -108,20 +146,19 @@ Automatisée, faite :
 - aucune référence locale ne subsiste dans le livrable ;
 - la bannière de build précède bien `00-namespace.js`.
 
-**Restant à valider dans un navigateur** — ces deux points ne peuvent pas être vérifiés
-autrement :
+Validé dans Edge **sur le poste cible**, le 2026-08-09 :
 
-- [ ] `tests.html` toujours au vert sur les sources.
-- [ ] Le fichier unique produit un devis rigoureusement identique à celui des sources —
-      comparer deux PDF sur le même jeu de données.
+- [x] `tests.html` au vert sur les sources.
+- [x] Le fichier unique produit un devis rigoureusement identique à celui des sources.
+- [x] `probe.html` : verdict GO, aucun test bloquant en échec.
 
 ---
 
-## Phase 2 — Vérification de version, optionnelle
+## Phase 2 — Vérification de version — FAIT
 
 Utile seulement si le poste a un accès réseau. À ne construire qu'après la phase 1.
 
-### Prérequis à valider avant d'écrire quoi que ce soit
+### Prérequis — validé
 
 **Le test est en place dans `probe.html`** — bouton « Tester l'accès réseau » : un
 `fetch()` depuis `file://` vers `raw.githubusercontent.com`.
@@ -131,9 +168,11 @@ poste ; émettre une requête au chargement d'une page de diagnostic contredirai
 promesse dans les faits, même sans rien transmettre. La requête reste un acte volontaire.
 
 La requête part avec `Origin: null`. GitHub répond `Access-Control-Allow-Origin: *`, ce
-qui devrait suffire à Chromium — mais cela reste à confirmer **sur le poste cible**, où un
-proxy d'entreprise ou une stratégie peuvent tout changer. Si ce test échoue, la phase 2
-s'arrête là et la phase 1 se suffit à elle-même.
+qui suffit à Chromium.
+
+**Résultat sur le poste cible, le 2026-08-09 : OK.** La phase 2 est donc construite.
+Le test reste dans `probe.html` : c'est lui qu'on relance le jour où le bandeau cesse
+d'apparaître, ou sur un nouveau poste.
 
 ### Fonctionnement
 
@@ -174,6 +213,50 @@ s'arrête là et la phase 1 se suffit à elle-même.
 - Une préférence permet de désactiver la vérification. Elle peut vivre dans
   `localStorage` : c'est un réglage d'interface, pas une donnée métier.
 
+### Ce qui a été construit
+
+`app/80-maj.js`, chargé après `70-preview`, appelé par `99-boot` **après** le montage de
+la coquille — jamais sur l'écran d'accueil, jamais au milieu d'une saisie. Le bandeau
+s'insère entre l'en-tête et le corps, en `--ui-accent-pale`, sans couleur d'alerte : une
+version périmée n'est pas un incident.
+
+Points qui ont demandé un arbitrage :
+
+- **Deux hôtes, deux niveaux de confiance.** Le `version.json` est lu sur
+  `raw.githubusercontent.com` — le seul hôte dont le CORS a été vérifié depuis une origine
+  opaque. L'hôte des *releases*, lui, redirige et n'offre aucune garantie : le
+  téléchargement tente un `fetch` puis **retombe sur `window.open(url)`** si la lecture
+  cross-origin est refusée. Le navigateur fait alors le travail, et l'utilisateur ne voit
+  pas la différence.
+- **Ordre de publication.** Le `version.json` de `main` est ce que lisent tous les postes.
+  Publié avant la release, il les envoie vers une URL morte. Cette faute n'est plus
+  possible à la main : `.github/workflows/livrable.yml` tient l'ordre, et vérifie que
+  l'URL annoncée répond `200` avant de considérer la publication réussie.
+- **Toute réponse douteuse est traitée comme une absence de réponse.** JSON illisible,
+  `url` non `https`, version hors format `X.Y.Z[-pre]` : `M.interroger` renvoie `null` et
+  personne n'est prévenu. Un manifeste corrompu ne doit pas produire un bandeau bancal.
+- **Comparaison de versions : égalité en cas de doute.** `comparerVersions` renvoie `0`
+  dès qu'une des deux versions est illisible. Renvoyer `-1` par défaut aurait proposé une
+  mise à jour vers n'importe quoi. Un test vérifie que `App.version` elle-même reste
+  lisible par le comparateur — sinon la vérification serait silencieusement morte.
+- **Sauvegarde forcée : seulement si `estModifie()`.** Quand le document n'est pas
+  modifié, `lastExportedAt >= lastModifiedAt` : un `.devis` existe déjà, c'est la
+  certitude qu'on cherchait. Forcer un export de plus n'aurait ajouté qu'un fichier.
+- **Sources éclatées : pas de bouton.** Le bandeau apparaît, mais sans téléchargement —
+  il n'y a pas de fichier unique à remplacer, et le poste de développement sait quoi
+  faire. La distinction passe par `App.build.fichierUnique`.
+- **`localStorage`, seul endroit du projet où il est utilisé.** Réglage d'interface. Sa
+  perte réactive simplement la vérification, ce qui est le bon comportement par défaut.
+
+### Vérification
+
+- [x] Comparaison de versions : 19 cas dans `tests.html`, groupe « Vérification de
+      version ». Aucun test n'émet de requête réseau.
+- [x] Hors ligne, aucun message : toute erreur de `M.interroger` est avalée, seul un
+      `console.debug` subsiste.
+- [ ] Bandeau, sauvegarde forcée et téléchargement : **à valider à la main** après la
+      première publication réelle d'un `version.json`. Ils ne peuvent pas l'être avant.
+
 ---
 
 ## Écarté : charger le code applicatif depuis IndexedDB
@@ -199,25 +282,29 @@ complexité.
    disparaître : `tests.html` et `template-lab.html` travaillent dessus. Le drapeau
    `App.build.fichierUnique` rend la différence explicite partout où elle compte.
 
-Restent ouvertes, et sans objet tant que le test réseau n'a pas été lancé sur le poste :
-
-1. **Le dépôt reste-t-il public ?** La phase 2 lit une URL publique. Un dépôt privé
-   imposerait un jeton, donc un secret dans un fichier lisible par tous — inacceptable.
-   Dans ce cas, publier le `version.json` ailleurs, ou renoncer à la phase 2.
-3. **Le poste cible a-t-il un accès réseau ?** Si non, la phase 2 est sans objet.
-4. **Où sont publiées les versions ?** Releases GitHub, partage réseau interne, autre.
+1. **Le dépôt reste-t-il public ? — TRANCHÉ : oui.** Aucun jeton n'est donc embarqué nulle
+   part. Passer le dépôt en privé casserait la vérification de version : il faudrait
+   republier le `version.json` sur un hôte public, ou renoncer à la phase 2. À ne pas
+   faire sans y penser.
+3. **Le poste cible a-t-il un accès réseau ? — TRANCHÉ : oui**, vérifié le 2026-08-09.
+4. **Où sont publiées les versions ? — TRANCHÉ : releases GitHub**, dépôt
+   `AurelienLab/KMInvoices`. Le manifeste `version.json` vit à la racine de `main`, le
+   livrable est une pièce jointe de release. Procédure dans le README.
 
 ## Critères d'acceptation
 
-Phase 1 :
+Phase 1 — remplis, validés sur le poste cible :
 
 - [x] L'ordre de concaténation est dérivé de `index.html`, pas redéclaré.
-- [ ] `outils/build.py` produit un `KMInvoices.html` qui s'ouvre par double-clic et se
-      comporte comme les sources. *(à confirmer dans Edge)*
-- [ ] Le PDF produit par le fichier unique est identique à celui des sources sur un même
-      devis. *(à confirmer dans Edge)*
+- [x] `outils/build.py` produit un `KMInvoices.html` qui s'ouvre par double-clic et se
+      comporte comme les sources.
+- [x] Le PDF produit par le fichier unique est identique à celui des sources sur un même
+      devis.
 
-Phase 2, si elle voit le jour :
+Phase 2 :
 
-- [ ] Hors ligne, l'application ne montre aucun message lié à la mise à jour.
-- [ ] Aucune vérification de version ne peut faire perdre du travail non enregistré.
+- [x] Hors ligne, l'application ne montre aucun message lié à la mise à jour.
+- [x] Aucune vérification de version ne peut faire perdre du travail non enregistré —
+      `assurerSauvegarde()` précède le téléchargement, et son échec l'interrompt.
+- [ ] Le bandeau apparaît réellement face à un `version.json` publié. *(première
+      publication)*

@@ -208,6 +208,70 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .etat-doc.modifie .point { background: var(--ui-alerte); }
 
 /* ==========================================================================
+   Bandeau de mise a jour
+
+   Volontairement discret : une ligne sous l'en-tete, dans le flux, aucune
+   couleur d'alerte. Une version perimee n'est pas un incident, et ce bandeau
+   ne doit jamais donner l'impression qu'il faut interrompre son travail.
+   Jamais de modale : voir docs/plan-mise-a-jour.md.
+   ========================================================================== */
+
+.bandeau-maj {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  font-size: 13px;
+  color: var(--ui-encre-douce);
+  background: var(--ui-accent-pale);
+  border-bottom: 1px solid var(--ui-bord);
+  z-index: 19;
+}
+
+.bandeau-maj strong { color: var(--ui-encre); font-weight: 600; }
+.bandeau-maj code { font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+.bandeau-maj em { font-style: normal; color: var(--ui-encre-faible); }
+
+.maj-espace { flex: 1 1 auto; }
+
+.maj-btn {
+  flex: 0 0 auto;
+  padding: 5px 11px;
+  border: 1px solid var(--ui-bord-fort);
+  border-radius: var(--ui-rayon);
+  background: var(--ui-surface);
+  cursor: pointer;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+.maj-btn:hover { border-color: var(--ui-accent); }
+.maj-btn:disabled { opacity: .55; cursor: default; }
+
+.maj-btn-principal {
+  background: var(--ui-accent);
+  border-color: var(--ui-accent);
+  color: #fff;
+}
+
+.maj-btn-principal:hover { background: var(--ui-accent-vif); border-color: var(--ui-accent-vif); }
+
+.maj-croix {
+  flex: 0 0 auto;
+  width: 24px; height: 24px;
+  display: grid; place-items: center;
+  padding: 0; border: 0; border-radius: var(--ui-rayon);
+  background: none; color: var(--ui-encre-faible);
+  font-size: 18px; line-height: 1; cursor: pointer;
+}
+
+.maj-croix:hover { background: rgba(16,24,40,.06); color: var(--ui-encre); }
+
+/* Le bandeau appartient a la vue d'edition : il ne s'imprime jamais. */
+@media print { .bandeau-maj { display: none !important; } }
+
+/* ==========================================================================
    Boutons
    ========================================================================== */
 

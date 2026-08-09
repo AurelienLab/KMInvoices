@@ -110,6 +110,9 @@
   function demarrerApplication() {
     masquerAccueil();
     App.ui.monterCoquille();
+    // Apres le montage, jamais avant : le bandeau ne doit pas s'inviter sur
+    // l'ecran d'accueil ni au milieu d'une saisie. Hors ligne, ne fait rien.
+    if (App.maj) App.maj.demarrer();
   }
 
   // --- Actions -------------------------------------------------------------

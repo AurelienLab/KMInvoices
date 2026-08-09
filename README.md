@@ -37,6 +37,10 @@ ne quitte le poste : tout vit dans le fichier `.devis` que vous enregistrez sur 
 | Installation | **Aucune.** Pas de Node.js, pas de Python, pas de droits administrateur |
 | Réseau | **Aucun.** L'outil fonctionne intégralement hors ligne |
 
+La seule requête réseau que l'outil sache émettre est la [vérification de
+version](#vérification-automatique-de-version), facultative et désactivable. Hors ligne,
+elle échoue en silence et rien ne change.
+
 Ces prérequis décrivent le **poste d'utilisation**. Le poste de développement a besoin de
 Python 3 pour produire le [fichier unique](#produire-le-fichier-unique) — jamais le poste
 d'utilisation, qui exécute le livrable tel quel.
@@ -275,6 +279,35 @@ migrations sont automatiques à l'ouverture.
 > par un téléchargement à chaque enregistrement. Le remplacement du fichier restera
 > toujours un geste manuel. Voir [le cadrage](docs/plan-mise-a-jour.md).
 
+### Vérification automatique de version
+
+Si le poste a un accès réseau, l'outil lit au démarrage un petit fichier `version.json`
+publié sur le dépôt. Quand une version plus récente existe, un bandeau discret apparaît
+sous l'en-tête. Le bouton **« Mettre à jour… »** enregistre d'abord le document en cours
+en `.devis`, télécharge le nouveau fichier, puis affiche la consigne de remplacement.
+
+Ce qu'elle ne fait jamais :
+
+- **Elle n'envoie rien.** La requête est une lecture de fichier statique public. Aucune
+  donnée, aucun identifiant, aucune statistique ne quitte le poste — ni ici, ni ailleurs
+  dans l'outil. Sur ce poste, « aucune donnée ne sort » est un engagement, pas un effet de
+  bord.
+- **Elle ne parle pas hors ligne.** Absence de réseau, proxy, blocage : la vérification
+  échoue en silence. Ne pas avoir de réseau est le mode de fonctionnement normal de cet
+  outil, pas une anomalie à signaler.
+- **Elle ne bloque rien.** Une version périmée n'empêche jamais de travailler, et le
+  bandeau se ferme.
+- **Elle ne fait rien perdre.** Un document modifié est enregistré en `.devis` avant tout
+  téléchargement.
+
+Le lien **« Ne plus vérifier »** du bandeau la désactive définitivement sur ce poste. Le
+réglage vit dans `localStorage` — c'est un réglage d'interface, pas une donnée métier ; le
+perdre réactive simplement la vérification.
+
+Si le format de fichier change, le bandeau le dit explicitement : les `.devis` enregistrés
+avec la nouvelle version ne pourront plus être ouverts par l'ancienne. Dans ce cas, mettre
+à jour tous les postes qui se partagent des fichiers.
+
 ### Produire le fichier unique
 
 Sur le **poste de développement** uniquement :
@@ -284,11 +317,65 @@ python3 outils/build.py
 ```
 
 Le script lit les balises `<script src>` et `<link href>` de `index.html`, dans l'ordre,
-et écrit `dist/KMInvoices.html`. Aucune dépendance, Python 3 suffit.
+et écrit `dist/KMInvoices.html` ainsi que `dist/version.json`. Aucune dépendance, Python 3
+suffit.
 
 `dist/KMInvoices.html` est un **artefact généré** : il n'est pas versionné et ne se
 modifie jamais à la main. Toute correction se fait dans les sources, suivie d'un nouveau
 build.
+
+### Publier une version
+
+Automatisé. Il n'y a qu'un geste :
+
+1. Faire évoluer `App.version` dans `app/00-namespace.js`. C'est la **source unique** :
+   le build la lit, il ne la réécrit jamais.
+2. Pousser sur `main`.
+
+Le workflow `.github/workflows/livrable.yml` construit le livrable, le vérifie, crée la
+release `v<version>` avec `KMInvoices.html` en pièce jointe, **puis** pousse le
+`version.json` correspondant à la racine de `main`. Les postes le voient au démarrage
+suivant.
+
+Quelques points à connaître :
+
+- **C'est le changement de version qui publie, pas le push.** Si la release `v<version>`
+  existe déjà, le workflow construit, vérifie, et s'arrête là. Corriger une faute dans le
+  README ne coupe pas une version.
+- **Le tag git n'est jamais posé à la main.** `v<version>` est créé par la release
+  elle-même, sur le commit poussé. Un tag posé à la main serait une seconde source de
+  vérité, qui finirait par diverger de `App.version`. Pour republier une version déjà
+  sortie — cas rare, et à éviter — il faut supprimer la release **et** le tag :
+  `git push origin :refs/tags/v<version>`. Le workflow refuse de publier sur un tag
+  orphelin plutôt que de produire une release dont les fichiers ne correspondent pas au
+  commit tagué.
+- **Une version suffixée est marquée pré-version.** `0.1.0-poc`, `0.2.0-rc.1` : la release
+  porte le drapeau *pre-release*, cohérent avec l'ordre que `App.maj` applique.
+- **L'ordre release → manifeste est tenu par le workflow.** Le `version.json` de `main`
+  est ce que lisent tous les postes : publié avant la release, il les enverrait vers une
+  URL qui n'existe pas encore. Le workflow vérifie d'ailleurs que l'URL annoncée répond
+  bien en `200` avant de se déclarer satisfait.
+- **Le texte du bandeau est le sujet du commit.** Soigner celui qui fait évoluer
+  `App.version`. Pour reprendre la main, lancer le workflow depuis l'onglet Actions
+  (« Run workflow ») et saisir la phrase voulue.
+- **Chaque pull request produit un livrable téléchargeable**, en artefact de build. C'est
+  de quoi essayer une version avant de la publier.
+- Le workflow pousse un commit sur `main`. Une règle de protection de branche qui
+  l'interdirait bloquerait cette étape : il faudrait alors y autoriser
+  `github-actions[bot]`, ou publier le `version.json` à la main.
+
+### Construire et vérifier à la main
+
+```
+python3 outils/build.py --notes "Une phrase de nouveautés."
+python3 outils/verifier.py
+```
+
+`verifier.py` est ce que lance la CI. Il contrôle que le livrable est autonome — aucune
+référence à un fichier voisin —, que chaque bloc `<script>` se referme et compile, que la
+bannière de build précède `00-namespace.js`, que la version affichée est celle des
+sources, et que JSZip est bien inliné. Il n'ouvre aucun navigateur : `tests.html` au vert
+et le PDF identique aux sources se vérifient dans Edge, à la main.
 
 ---
 
@@ -415,6 +502,7 @@ app/
   ├── 60-ui-catalogue.js vue catalogue
   ├── 60-ui-devis.js     vue devis et panneau d'aperçu
   ├── 70-preview.js      montage du rendu, aperçu et impression
+  ├── 80-maj.js          vérification de version, facultative et silencieuse
   └── 99-boot.js         diagnostic et écran de démarrage
 templates/default/
   ├── template.js        App.templates.default.render(model)
@@ -422,9 +510,14 @@ templates/default/
 vendor/
   └── jszip.min.js       à fournir
 outils/
-  └── build.py           produit dist/KMInvoices.html, le livrable en fichier unique
+  ├── build.py           produit dist/KMInvoices.html, le livrable en fichier unique
+  └── verifier.py        contrôle le livrable produit — ce que lance la CI
+.github/workflows/
+  └── livrable.yml       build, vérification, release et manifeste sur push vers main
 dist/
-  └── KMInvoices.html    artefact généré, non versionné
+  ├── KMInvoices.html    artefact généré, non versionné
+  └── version.json       manifeste de release, à copier à la racine une fois publié
+version.json             manifeste lu par les postes (présent après la 1re publication)
 probe.html               validation de l'architecture sur un poste
 tests.html               lanceur de tests
 template-lab.html        mise au point du template sur données factices
@@ -443,6 +536,8 @@ en commentaire juste au-dessus, dans le fichier lui-même. Les dépendances rée
 - `15-format` avant `20-schema` et `30-calc`, qui l'utilisent ;
 - `60-ui-shell` avant les vues, qui s'enregistrent dans `App.ui.vues` ;
 - les templates avant `99-boot`, qui vérifie leur présence ;
+- `80-maj` après `50-store` et `60-ui-shell`, dont il se sert ; son absence pure et simple
+  ne casse rien, `99-boot` le teste avant de l'appeler ;
 - `99-boot` en dernier : c'est le seul fichier qui déclenche quelque chose.
 
 L'ordre entre les fichiers `60-ui-*` fixe l'ordre d'affichage dans la navigation.
@@ -498,6 +593,10 @@ règle du snapshot, l'aller-retour d'archive et la persistance des `Blob`.
 Bilan vert en haut de page si tout passe. Les tests d'archive sont ignorés tant que
 `vendor/jszip.min.js` est absent.
 
+Aucun test n'émet de requête réseau : de la vérification de version, seule la comparaison
+de numéros est testée — c'est une fonction pure, et une comparaison fausse proposerait une
+mise à jour vers une version plus ancienne.
+
 ### `template-lab.html`
 
 Monte le template sur un jeu de données factices réaliste — douze machines avec photos,
@@ -519,6 +618,12 @@ ESM. Voir [Installation](#installation).
 **« Ce fichier est incomplet ou corrompu » au démarrage**
 Version fichier unique. JSZip y est intégré : s'il manque, le fichier a été tronqué —
 copie interrompue, antivirus, partage réseau. Retélécharger, puis remplacer.
+
+**Aucun bandeau de mise à jour alors qu'une version plus récente existe**
+Trois causes, dans cet ordre : la vérification a été désactivée d'un clic sur « Ne plus
+vérifier » (vider les données de site la réactive) ; le poste n'a pas d'accès réseau ; le
+`version.json` de la branche `main` n'a pas été mis à jour après la release. Le bandeau
+n'apparaît qu'après l'ouverture d'un document, jamais sur l'écran d'accueil.
 
 **Une page blanche s'imprime avant le document**
 Un conteneur de la vue d'édition survit à l'impression avec une hauteur non nulle. Vérifier
@@ -554,12 +659,17 @@ résidu d'arrondi étant absorbé par la plus grosse base.
 
 ## Feuille de route
 
-- [Système de mise à jour](docs/plan-mise-a-jour.md) — phase 1 (livrable en fichier
-  unique) faite. Phase 2, vérification de version en ligne : suspendue au test d'accès
-  réseau de `probe.html` sur le poste cible.
+Rien en attente. Le [système de mise à jour](docs/plan-mise-a-jour.md) est complet :
+livrable en fichier unique et vérification de version.
 
 ---
 
 ## Licence et état
 
-Prototype fonctionnel, version `0.1.0-poc`. Usage interne.
+Prototype fonctionnel, usage interne.
+
+La version courante n'est pas écrite ici : elle vit dans `App.version`
+(`app/00-namespace.js`) et nulle part ailleurs. La [dernière release publiée][releases]
+fait foi.
+
+[releases]: https://github.com/AurelienLab/KMInvoices/releases

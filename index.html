@@ -152,6 +152,9 @@
        60-ui-devis     /  60-ui-devis expose UI.creerDevisPour, appelé par
                           la vue clients — au clic, donc l'ordre importe peu.
        70-preview     montage du rendu pour l'aperçu et l'impression.
+       80-maj         vérification de version. Facultatif : son absence ne
+                      change rien au reste. Dépend de 50-store (sauvegarde
+                      forcée) et de 60-ui-shell (notifications).
 
        templates/*    chaque template s'enregistre dans App.templates.
                       Doit précéder 99-boot, qui vérifie sa présence.
@@ -175,6 +178,7 @@
 <script src="app/60-ui-catalogue.js"></script>
 <script src="app/60-ui-devis.js"></script>
 <script src="app/70-preview.js"></script>
+<script src="app/80-maj.js"></script>
 
 <script src="templates/default/template.js"></script>
 
