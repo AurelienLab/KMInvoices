@@ -80,16 +80,19 @@
     );
     if (ids.childNodes.length) add(ident, ids);
 
-    // Cartouche du devis, a droite.
+    /*
+     * Cartouche, a droite.
+     *
+     * Ni numero, ni date de fin de validite : ce document est une FICHE
+     * INFORMATIVE, pas une offre engageante. Un numero laisserait croire a une
+     * piece comptable, une date de validite a un engagement de prix. Le devis
+     * garde son numero en interne, pour nommer les fichiers ; il ne s'imprime
+     * plus.
+     */
     var meta = el('div', 'doc-meta');
-    add(meta, el('div', 'doc-titre', 'Devis'));
-    add(meta, el('div', 'doc-numero', m.devis.numero));
+    add(meta, el('div', 'doc-titre', 'Proposition commerciale'));
     var table = el('div', 'doc-meta-liste');
-    add(table,
-      paire('Date d\'émission', m.devis.dateEmissionTexte),
-      paire('Validité', m.devis.validiteJoursTexte),
-      paire('Valable jusqu\'au', m.devis.dateValiditeTexte)
-    );
+    add(table, paire('Date d\'émission', m.devis.dateEmissionTexte));
     add(meta, table);
 
     return add(head, ident, meta);
@@ -117,11 +120,18 @@
     // display: table-header-group en CSS -> l'en-tete se repete a chaque page.
     var thead = el('thead');
     var tr = el('tr');
+    add(tr, el('th', 'c-des', 'Désignation'));
+
+    // Colonnes d'attributs, entre la designation et les chiffres : elles
+    // decrivent la machine, elles ne la chiffrent pas.
+    m.colonnes.forEach(function (c) {
+      add(tr, el('th', 'c-attr', c.uniteCommune ? c.nom + ' (' + c.uniteCommune + ')' : c.nom));
+    });
+
     add(tr,
-      el('th', 'c-des', 'Désignation'),
       el('th', 'c-qte', 'Qté'),
       el('th', 'c-pu', 'P.U. HT'),
-      el('th', 'c-rem', 'Remise'),
+      m.afficherRemise ? el('th', 'c-rem', 'Remise') : null,
       el('th', 'c-tva', 'TVA'),
       el('th', 'c-tot', 'Total HT')
     );
@@ -155,11 +165,14 @@
       add(qte, el('span', 'lig-qte-n', l.quantiteTexte));
       if (l.unite) add(qte, el('span', 'lig-unite', ' ' + l.unite));
 
+      add(row, des);
+      l.attributsTexte.forEach(function (v) {
+        add(row, el('td', 'c-attr', v || '—'));
+      });
       add(row,
-        des,
         qte,
         el('td', 'c-pu', l.prixUnitaireTexte),
-        el('td', 'c-rem', l.remiseTexte || '—'),
+        m.afficherRemise ? el('td', 'c-rem', l.remiseTexte || '—') : null,
         el('td', 'c-tva', l.tauxTVATexte),
         el('td', 'c-tot', l.totalHTTexte)
       );
@@ -168,6 +181,29 @@
     add(table, tbody);
 
     return table;
+  }
+
+  /**
+   * Cumuls des attributs numeriques marques « totaliser » au catalogue.
+   *
+   * Multiplies par les quantites : c'est le total de l'installation proposee,
+   * pas la somme des caracteristiques unitaires. Absent si rien n'est
+   * cumulable — ce bloc n'a pas de raison d'exister a vide.
+   */
+  function renderTotauxAttributs(m) {
+    if (!m.totauxAttributs || !m.totauxAttributs.length) return null;
+
+    var bloc = el('section', 'doc-attr-totaux');
+    add(bloc, el('div', 'doc-bloc-titre', 'Totaux de l\'ensemble'));
+
+    var liste = el('div', 'attr-liste');
+    m.totauxAttributs.forEach(function (t) {
+      var n = el('div', 'attr-tot');
+      add(n, el('span', 'attr-tot-k', t.nom), el('span', 'attr-tot-v', t.totalTexte));
+      add(liste, n);
+    });
+
+    return add(bloc, liste);
   }
 
   function renderRecapTVA(m) {
@@ -250,21 +286,13 @@
     return bloc;
   }
 
-  function renderSignature(m) {
-    var bloc = el('section', 'doc-signature');
-    var g = el('div', 'sig-gauche');
-    add(g, el('div', 'sig-titre', 'Bon pour accord'));
-    add(g, el('div', 'sig-consigne',
-      'Date, nom du signataire et mention manuscrite « Bon pour accord », suivie de la signature.'));
-    if (m.devis.dateValiditeTexte) {
-      add(g, el('div', 'sig-validite', 'Offre valable jusqu\'au ' + m.devis.dateValiditeTexte + '.'));
-    }
-    var d = el('div', 'sig-cadre');
-    add(d, el('div', 'sig-cadre-l', 'Date :'));
-    add(d, el('div', 'sig-cadre-l', 'Nom :'));
-    add(d, el('div', 'sig-cadre-l sig-cadre-sign', 'Signature :'));
-    return add(bloc, g, d);
-  }
+  /*
+   * Pas d'encart de signature.
+   *
+   * Le document est une fiche informative : il ne se signe pas, il ne se
+   * retourne pas. Un cadre « Bon pour accord » en transformerait la nature —
+   * un client qui le renvoie signe croit avoir commande.
+   */
 
   function renderPied(m) {
     var pied = el('footer', 'doc-pied');
@@ -275,7 +303,10 @@
     add(pied, l);
     var mentions = lignesBloc('div', 'pied-mentions', m.societe.mentionsLegalesLignes);
     if (mentions) add(pied, mentions);
-    add(pied, el('div', 'pied-doc', 'Devis ' + m.devis.numero));
+    // Sans numero, c'est la date qui identifie le document d'une page a l'autre.
+    add(pied, el('div', 'pied-doc',
+      'Proposition commerciale' +
+      (m.devis.dateEmissionTexte ? ' du ' + m.devis.dateEmissionTexte : '')));
     return pied;
   }
 
@@ -316,9 +347,9 @@
         renderEnTete(model),
         renderClient(model),
         renderLignes(model),
+        renderTotauxAttributs(model),
         renderSynthese(model),
-        renderConditions(model),
-        renderSignature(model)
+        renderConditions(model)
       );
       add(trCorps, tdCorps);
       add(corps, trCorps);

@@ -7,11 +7,13 @@
 <!-- ORDRE DE CHARGEMENT SIGNIFICATIF (identique dans index.html et tests.html) :
      1. 00-namespace  crée App et ses sous-espaces
      2. 15-format     formatage fr-FR, utilisé par le moteur de calcul
-     3. 30-calc       moteur de calcul pur, produit le modèle de document
-     4. templates/*   chaque template s'enregistre dans App.templates
+     3. 20-schema     30-calc y lit valeurNumerique pour les attributs
+     4. 30-calc       moteur de calcul pur, produit le modèle de document
+     5. templates/*   chaque template s'enregistre dans App.templates
      Aucun module ES, aucun import : contrainte file://. -->
 <script src="app/00-namespace.js"></script>
 <script src="app/15-format.js"></script>
+<script src="app/20-schema.js"></script>
 <script src="app/30-calc.js"></script>
 <script src="templates/default/template.js"></script>
 <link rel="stylesheet" href="templates/default/template.css">
@@ -87,6 +89,8 @@
   </label>
   <label><input type="checkbox" id="optImages" checked> Images</label>
   <label><input type="checkbox" id="optRemise" checked> Remise globale</label>
+  <label><input type="checkbox" id="optRemiseLigne" checked> Remises de ligne</label>
+  <label><input type="checkbox" id="optColonnes"> Toutes les colonnes</label>
   <label><input type="checkbox" id="optAcompte" checked> Acompte</label>
   <label><input type="checkbox" id="optLogo" checked> Logo</label>
   <label><input type="checkbox" id="optGuides"> Repères A4</label>
@@ -256,8 +260,15 @@
         tauxTVA: TAUX[i % TAUX.length],
         unite: UNITES[i % UNITES.length],
         imageFile: options.images ? ('img-' + (i % MACHINES.length) + '.jpg') : null,
+        // Puissance totalisable, tension non numérique : les deux cas que le
+        // document doit savoir traiter côte à côte dans la même colonne.
+        attributs: [
+          { id: 'a' + i + 'p', nom: 'Puissance', valeur: String([5, 7.5, 2.2, 11, 4, 1.5][i % 6]).replace('.', ','), unite: 'kW', totaliser: true },
+          { id: 'a' + i + 'm', nom: 'Masse', valeur: String([1200, 2400, 380, 3100, 950, 210][i % 6]), unite: 'kg', totaliser: true },
+          { id: 'a' + i + 't', nom: 'Alimentation', valeur: i % 4 === 0 ? '230 V mono' : '400 V triphasé', unite: '', totaliser: false }
+        ],
         quantite: [1, 1, 2, 1, 3, 1.5][i % 6],
-        remisePct: [0, 0, 5, 0, 10, 0][i % 6]
+        remisePct: options.remiseLigne ? [0, 0, 5, 0, 10, 0][i % 6] : 0
       });
     }
 
@@ -265,8 +276,10 @@
       id: 'd1',
       numero: '2026-0042',
       dateEmission: '2026-08-07',
-      validiteJours: 30,
       statut: 'brouillon',
+      colonnesAttributs: options.colonnes
+        ? ['Puissance', 'Masse', 'Alimentation']
+        : ['Puissance'],
       client: {
         nom: 'Ateliers Fournier & Fils',
         contact: 'Laurent Fournier, responsable production',
@@ -314,6 +327,10 @@
       nbLignes: Math.max(1, Math.min(60, parseInt(document.getElementById('nbLignes').value, 10) || 12)),
       images:  document.getElementById('optImages').checked,
       remise:  document.getElementById('optRemise').checked,
+      // Décocher fait disparaître la colonne de remise du document : c'est
+      // le cas qu'on veut pouvoir regarder, pas seulement supposer.
+      remiseLigne: document.getElementById('optRemiseLigne').checked,
+      colonnes: document.getElementById('optColonnes').checked,
       acompte: document.getElementById('optAcompte').checked,
       logo:    document.getElementById('optLogo').checked
     };
@@ -374,7 +391,8 @@
     return true;
   }
 
-  ['nbLignes', 'optImages', 'optRemise', 'optAcompte', 'optLogo', 'tplSelect']
+  ['nbLignes', 'optImages', 'optRemise', 'optRemiseLigne', 'optColonnes',
+   'optAcompte', 'optLogo', 'tplSelect']
     .forEach(function (id) {
       document.getElementById(id).addEventListener('change', rendre);
     });

@@ -390,14 +390,19 @@
   function blocEntete() {
     var c = UI.carte('Devis');
     [
-      champDevis({ chemin: 'numero', libelle: 'Numéro', taille: 'c3' }),
-      champDevis({ chemin: 'dateEmission', libelle: 'Date d\'émission', taille: 'c3', type: 'date' }),
+      // Le numero ne s'imprime plus sur le document — c'est une fiche
+      // informative, pas une piece comptable. Il sert encore a nommer les
+      // fichiers .devis et a s'y retrouver dans la liste, d'ou le champ.
       champDevis({
-        chemin: 'validiteJours', libelle: 'Validité (jours)', taille: 'c3',
-        type: 'number', min: 0, nombre: true
+        chemin: 'numero', libelle: 'Numéro', taille: 'c4',
+        aide: 'Repère interne. N\'apparaît pas sur le document imprimé.'
       }),
+      champDevis({ chemin: 'dateEmission', libelle: 'Date d\'émission', taille: 'c4', type: 'date' }),
+      // Plus de champ de validite : le document ne porte plus de date de fin
+      // d'offre. Le champ existe encore dans les fichiers anciens, il n'est
+      // simplement plus ni affiche ni modifiable.
       champDevis({
-        chemin: 'statut', libelle: 'Statut', taille: 'c3', type: 'select',
+        chemin: 'statut', libelle: 'Statut', taille: 'c4', type: 'select',
         options: App.schema.STATUTS.map(function (s) {
           return { valeur: s, libelle: App.schema.LIBELLES_STATUT[s] };
         })
@@ -823,6 +828,7 @@
     if (!refs.corpsLignes) return;
     refs.corpsLignes.innerHTML = '';
     refsLignes = {};
+    rendreColonnes();
 
     var d = devisCourant();
     if (!d) return;
@@ -837,6 +843,57 @@
 
     d.lignes.forEach(function (l, i) {
       refs.corpsLignes.appendChild(ligneRow(l, i, d.lignes.length));
+    });
+  }
+
+  /**
+   * Choix des caracteristiques promues en colonnes du document.
+   *
+   * Les noms proposes sont ceux que portent REELLEMENT les lignes du devis,
+   * pas ceux du catalogue : une ligne est un snapshot, et le catalogue a pu
+   * bouger depuis. Ajouter ou retirer une ligne change donc cette liste, d'ou
+   * le redessin depuis rendreLignes().
+   */
+  function rendreColonnes() {
+    if (!refs.colonnes) return;
+    refs.colonnes.innerHTML = '';
+
+    var d = devisCourant();
+    if (!d) return;
+
+    var noms = App.schema.nomsAttributsDevis(d);
+    if (!noms.length) {
+      var vide = document.createElement('span');
+      vide.className = 'cols-vide';
+      vide.textContent = 'Aucune caractéristique sur ces lignes. ' +
+        'En ajouter aux fiches du catalogue, puis réinsérer la machine.';
+      refs.colonnes.appendChild(vide);
+      return;
+    }
+
+    var libelle = document.createElement('span');
+    libelle.className = 'cols-vide';
+    libelle.textContent = 'Colonnes :';
+    refs.colonnes.appendChild(libelle);
+
+    noms.forEach(function (nom) {
+      var bascule = document.createElement('label');
+      bascule.className = 'bascule';
+      var c = document.createElement('input');
+      c.type = 'checkbox';
+      c.checked = (d.colonnesAttributs || []).indexOf(nom) !== -1;
+      c.onchange = function () {
+        majDevis(function (devis) {
+          var liste = devis.colonnesAttributs || [];
+          var i = liste.indexOf(nom);
+          if (c.checked && i === -1) liste.push(nom);
+          if (!c.checked && i !== -1) liste.splice(i, 1);
+          devis.colonnesAttributs = liste;
+        });
+      };
+      bascule.appendChild(c);
+      bascule.appendChild(document.createTextNode(' ' + nom));
+      refs.colonnes.appendChild(bascule);
     });
   }
 
@@ -890,6 +947,10 @@
     refs.corpsLignes = document.createElement('div');
     refs.corpsLignes.className = 'lig-corps';
     c.corps.appendChild(refs.corpsLignes);
+
+    refs.colonnes = document.createElement('div');
+    refs.colonnes.className = 'cols-attrs';
+    c.corps.appendChild(refs.colonnes);
 
     rendreLignes();
     return c;

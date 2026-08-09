@@ -168,6 +168,148 @@
     champArchive.appendChild(aideArchive);
     form.appendChild(champArchive);
 
+    // --- Attributs personnalises ---
+
+    /*
+     * Caracteristiques libres : puissance, poids, encombrement, garantie.
+     *
+     * La valeur reste du TEXTE. « 400 V triphase » doit passer aussi bien que
+     * « 5 ». Cocher « totaliser » n'a d'effet que sur une valeur numerique, et
+     * la case le dit quand elle ne peut rien faire.
+     *
+     * Les attributs sont RECOPIES sur la ligne de devis a l'insertion, comme
+     * le prix et le libelle. Modifier cette fiche ne changera aucun devis
+     * deja etabli.
+     */
+    brouillon.attributs = App.schema.normaliserAttributs(brouillon.attributs);
+
+    var champAttrs = document.createElement('div');
+    champAttrs.className = 'champ c12';
+    champAttrs.innerHTML = '<label>Caractéristiques</label>';
+
+    var listeNoms = document.createElement('datalist');
+    listeNoms.id = 'attrs-' + App.uid().slice(0, 8);
+    App.schema.nomsAttributs(App.store.get()).forEach(function (n) {
+      var o = document.createElement('option');
+      o.value = n;
+      listeNoms.appendChild(o);
+    });
+    champAttrs.appendChild(listeNoms);
+
+    var corpsAttrs = document.createElement('div');
+    corpsAttrs.className = 'attrs';
+    champAttrs.appendChild(corpsAttrs);
+
+    function ligneAttribut(attr) {
+      var row = document.createElement('div');
+      row.className = 'attr-l';
+
+      function petit(valeur, placeholder, classe, onchange) {
+        var i = document.createElement('input');
+        i.type = 'text';
+        i.className = 'attr-champ ' + classe;
+        i.value = valeur || '';
+        i.placeholder = placeholder;
+        i.oninput = function () { onchange(i.value); };
+        return i;
+      }
+
+      var nom = petit(attr.nom, 'Puissance', 'attr-nom', function (v) {
+        attr.nom = v;
+        majEtatTotaliser();
+      });
+      nom.setAttribute('list', listeNoms.id);
+      row.appendChild(nom);
+
+      row.appendChild(petit(attr.valeur, 'Valeur', 'attr-val', function (v) {
+        attr.valeur = v;
+        majEtatTotaliser();
+      }));
+
+      row.appendChild(petit(attr.unite, 'kW', 'attr-unite', function (v) {
+        attr.unite = v;
+      }));
+
+      var bascule = document.createElement('label');
+      bascule.className = 'bascule attr-tot';
+      var caseTot = document.createElement('input');
+      caseTot.type = 'checkbox';
+      caseTot.checked = !!attr.totaliser;
+      caseTot.onchange = function () { attr.totaliser = caseTot.checked; };
+      bascule.appendChild(caseTot);
+      bascule.appendChild(document.createTextNode(' Totaliser'));
+      row.appendChild(bascule);
+
+      // Une case cochee sur « 400 V triphase » ne produirait aucun total et
+      // rien ne le dirait. Mieux vaut desactiver la case et l'expliquer.
+      function majEtatTotaliser() {
+        var numerique = App.schema.valeurNumerique(attr.valeur) !== null;
+        caseTot.disabled = !numerique;
+        bascule.classList.toggle('inactif', !numerique);
+        bascule.title = numerique
+          ? 'Ajoute cette caractéristique aux totaux du document, multipliée par la quantité.'
+          : 'Seules les valeurs numériques peuvent être totalisées.';
+      }
+      majEtatTotaliser();
+
+      var sup = document.createElement('button');
+      sup.className = 'btn btn-discret btn-danger attr-sup';
+      sup.type = 'button';
+      sup.textContent = '×';
+      sup.title = 'Retirer cette caractéristique';
+      sup.onclick = function (e) {
+        e.preventDefault();
+        brouillon.attributs = brouillon.attributs.filter(function (a) { return a !== attr; });
+        rendreAttributs();
+      };
+      row.appendChild(sup);
+
+      return row;
+    }
+
+    function rendreAttributs() {
+      corpsAttrs.innerHTML = '';
+
+      if (!brouillon.attributs.length) {
+        var vide = document.createElement('div');
+        vide.className = 'aide';
+        vide.textContent = 'Aucune caractéristique. Elles deviennent des colonnes ' +
+          'sélectionnables sur le document, et les valeurs numériques cochées ' +
+          '« Totaliser » y produisent un cumul.';
+        corpsAttrs.appendChild(vide);
+      } else {
+        var entetes = document.createElement('div');
+        entetes.className = 'attr-l attr-entetes';
+        ['Nom', 'Valeur', 'Unité', '', ''].forEach(function (t, i) {
+          var e = document.createElement('div');
+          e.className = ['attr-nom', 'attr-val', 'attr-unite', 'attr-tot', 'attr-sup'][i];
+          e.textContent = t;
+          entetes.appendChild(e);
+        });
+        corpsAttrs.appendChild(entetes);
+
+        brouillon.attributs.forEach(function (a) {
+          corpsAttrs.appendChild(ligneAttribut(a));
+        });
+      }
+
+      var ajout = document.createElement('button');
+      ajout.className = 'btn attr-ajout';
+      ajout.type = 'button';
+      ajout.textContent = 'Ajouter une caractéristique';
+      ajout.onclick = function (e) {
+        e.preventDefault();
+        brouillon.attributs.push(App.schema.nouvelAttribut());
+        rendreAttributs();
+        var champs = corpsAttrs.querySelectorAll('.attr-nom');
+        if (champs.length) champs[champs.length - 1].focus();
+      };
+      corpsAttrs.appendChild(ajout);
+    }
+
+    rendreAttributs();
+    form.appendChild(champAttrs);
+
     // --- Photo ---
 
     var champPhoto = document.createElement('div');
@@ -302,6 +444,10 @@
         return;
       }
 
+      // Une caracteristique ajoutee puis laissee sans nom est un oubli, pas
+      // une donnee : normaliserAttributs les ecarte silencieusement.
+      brouillon.attributs = App.schema.normaliserAttributs(brouillon.attributs);
+
       App.store.mutate(function (data) {
         // Insertion ou remplacement, comme au repertoire clients : une fiche
         // a enregistrer ne doit jamais se perdre parce que la recherche a
@@ -395,6 +541,10 @@
     var copie = Object.assign({}, produit, {
       id: App.uid(),
       reference: produit.reference + '-COPIE',
+      // Object.assign est une copie de SURFACE : sans cette ligne, les deux
+      // fiches partageraient le meme tableau d'attributs, et modifier la
+      // copie modifierait l'originale.
+      attributs: App.schema.copierAttributs(produit.attributs),
       archive: false
     });
     App.store.mutate(function (data) { data.catalogue.push(copie); });

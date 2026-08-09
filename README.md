@@ -140,11 +140,32 @@ qui la référencent.
 ### 3. Catalogue
 
 Une fiche par machine : référence unique, désignation, description, prix HT, taux de TVA,
-unité, photo.
+unité, caractéristiques, photo.
 
 La photo s'importe par glisser-déposer ou par sélection de fichier. Elle est
 automatiquement réduite à 1200 px de plus grand côté et réencodée en JPEG qualité 0,8
 avant stockage — inutile de préparer les images à l'avance.
+
+#### Caractéristiques personnalisées
+
+Chaque fiche porte autant de caractéristiques libres que nécessaire : **un nom, une
+valeur, une unité**. Puissance 5 kW, masse 1200 kg, alimentation 400 V triphasé.
+
+La valeur reste du **texte** : `400 V triphasé` passe aussi bien que `5`. Rien n'est
+imposé à la saisie.
+
+La case **Totaliser** ajoute la caractéristique aux totaux du document, **multipliée par
+la quantité** : deux machines de 5 kW donnent 10 kW. Elle ne s'active que sur une valeur
+numérique — cocher n'aurait aucun effet sur `400 V triphasé`, et la case le dit plutôt
+que de laisser croire le contraire.
+
+Elle reste facultative sur les valeurs numériques : cumuler une puissance a du sens,
+cumuler une durée de garantie n'en a aucun. L'outil ne peut pas le deviner, c'est à vous
+de le dire.
+
+Le champ *Nom* propose les caractéristiques déjà employées ailleurs dans le catalogue.
+S'en servir plutôt que de ressaisir : deux orthographes du même nom donnent deux colonnes
+distinctes sur le document.
 
 Une fiche **archivée** disparaît de la sélection sans casser les devis qui l'utilisent.
 C'est la bonne façon de retirer une machine du commerce.
@@ -155,15 +176,42 @@ Créer un devis, renseigner le client, puis ajouter des machines depuis le catal
 des lignes libres. Quantités, remises par ligne, remise globale, acompte et observations
 se saisissent directement. Les totaux se recalculent à chaque frappe.
 
+Sous les lignes, une rangée de cases **Colonnes** choisit les caractéristiques à faire
+figurer en colonnes du document. Ne sont proposées que celles réellement portées par les
+lignes du devis — pas tout le catalogue. Ajouter ou retirer une machine met la liste à
+jour.
+
+> **Trois colonnes de caractéristiques, grand maximum.** Elles se prennent sur la largeur
+> de la désignation, qui est la seule colonne élastique du document. Au-delà, les
+> libellés de machines passent à la ligne et le tableau devient illisible. C'est une
+> limite de la feuille A4, pas de l'outil.
+
 Le panneau d'aperçu à droite montre le document réel, à l'échelle. C'est exactement ce
 qui sortira à l'impression : le même moteur de rendu produit les deux.
+
+### Ce que contient le document imprimé
+
+Le document est une **proposition commerciale** : une fiche informative, pas une offre
+engageante. Il porte donc :
+
+- **aucun numéro.** Le numéro sert à nommer les fichiers et à s'y retrouver dans la
+  liste ; il ne s'imprime pas. Un numéro sur le document le ferait passer pour une pièce
+  comptable.
+- **aucune date de fin de validité.** Seule la date d'émission figure.
+- **aucun encart « Bon pour accord ».** Rien à signer, rien à retourner — un client qui
+  renvoie un document signé croirait avoir commandé.
+- **une colonne de remise seulement s'il y en a une.** Une colonne entière de tirets
+  n'apprend rien et suggère une négociation qui n'a pas eu lieu.
+- **les totaux des caractéristiques cumulables**, sous le tableau des lignes : puissance
+  totale, masse totale de l'ensemble proposé.
 
 ### La règle du snapshot
 
 Elle vaut pour le catalogue **et** pour le répertoire clients.
 
-**Une ligne de devis copie le libellé, le prix et le taux de TVA au moment où vous
-l'insérez. Un devis copie de même les coordonnées du client.** Modifier ensuite la fiche
+**Une ligne de devis copie le libellé, le prix, le taux de TVA et les caractéristiques au
+moment où vous l'insérez. Un devis copie de même les coordonnées du client.** Modifier
+ensuite la fiche
 d'origine ne change rien aux devis déjà établis. C'est voulu : un devis émis ne doit
 jamais bouger dans le dos du client — s'il déménage six mois plus tard, un devis
 antérieur doit continuer de porter l'adresse à laquelle il a été envoyé.
@@ -404,6 +452,12 @@ en cours ; il n'existe pas de fusion.
 récente de l'application est refusé avec un message explicite plutôt que lu de travers.
 Un fichier plus ancien passe par une conversion automatique.
 
+L'arrivée des caractéristiques personnalisées **n'a pas fait changer `schemaVersion`** :
+ce sont des champs ajoutés, jamais des champs déplacés. Un fichier ancien s'ouvre sans
+rien perdre, et un fichier récent reste lisible par une version antérieure de l'outil,
+qui conserve les caractéristiques sans savoir les afficher. Aucun parc à mettre à jour en
+bloc.
+
 ---
 
 ## Limitations connues
@@ -479,6 +533,12 @@ Deux règles à connaître :
 Pour créer une variante complète, copier le dossier `templates/default/` sous un autre
 nom, changer l'identifiant dans `template.js`, et ajouter les deux balises correspondantes
 dans `index.html`. Rien d'autre.
+
+**Un template ne décide de rien.** Il ne calcule pas, ne formate pas, et n'arbitre pas
+non plus ce qui s'affiche : `30-calc.js` lui livre `colonnes`, `afficherRemise` et
+`totauxAttributs` déjà résolus. Une variante qui voudrait réafficher un numéro de devis
+ou une date de validité ne le pourrait pas — le modèle ne les expose plus. C'est
+volontaire : ces choix appartiennent au document, pas à sa présentation.
 
 ---
 
@@ -604,8 +664,13 @@ plusieurs taux de TVA, remise globale, acompte, description longue, débordement
 plusieurs pages — sans dépendre du reste de l'application.
 
 C'est là qu'on met la présentation au point sans avoir à saisir un vrai devis. Les
-options de la barre supérieure permettent de faire varier le nombre de lignes, les photos
-et le logo.
+options de la barre supérieure font varier le nombre de lignes, les photos, le logo, les
+remises et les colonnes de caractéristiques.
+
+Deux cases méritent d'être manœuvrées avant toute retouche du template : **Remises de
+ligne**, qui fait apparaître et disparaître la colonne de remise, et **Toutes les
+colonnes**, qui pousse le tableau à trois caractéristiques — le cas où la désignation
+commence à souffrir.
 
 ---
 

@@ -464,6 +464,52 @@ input.invalide, textarea.invalide {
 
 .bascule input { accent-color: var(--ui-accent); }
 
+/* ==========================================================================
+   Caracteristiques personnalisees (editeur de fiche catalogue)
+   ========================================================================== */
+
+.attrs { display: flex; flex-direction: column; gap: 6px; }
+
+.attr-l {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr .7fr auto auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.attr-entetes {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ui-encre-faible);
+  padding: 0 2px;
+}
+
+.attr-champ { width: 100%; }
+
+/* Une case a cocher desactivee doit se voir desactivee : sans cela, on croit
+   avoir coche et rien ne se passe sur le document. */
+.bascule.inactif { opacity: .45; cursor: not-allowed; }
+
+.attr-tot { white-space: nowrap; font-size: 12.5px; }
+
+.attr-sup {
+  padding: 4px 10px;
+  line-height: 1;
+  font-size: 16px;
+}
+
+.attr-ajout { align-self: flex-start; margin-top: 4px; }
+
+/* ==========================================================================
+   Selection des colonnes d'attributs (vue devis)
+   ========================================================================== */
+
+.cols-attrs { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
+
+.cols-attrs .bascule { font-size: 12.5px; }
+
+.cols-vide { font-size: 12px; color: var(--ui-encre-faible); }
+
 button.lien {
   border: 0; background: none; padding: 0;
   color: var(--ui-accent-vif);

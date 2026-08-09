@@ -127,6 +127,99 @@
     });
   };
 
+  // --- Attributs personnalises ---------------------------------------------
+
+  /**
+   * Caracteristique libre portee par un produit : puissance, poids, garantie.
+   *
+   * `valeur` est stockee en TEXTE, jamais en nombre. Un attribut vaut aussi
+   * bien « 5 » que « 400 V triphase » ; forcer un type a la saisie
+   * interdirait le second cas. Le caractere numerique se decide a la lecture,
+   * via S.valeurNumerique.
+   *
+   * `totaliser` n'a d'effet que sur les valeurs numeriques. Cumuler une
+   * puissance a du sens, cumuler une duree de garantie n'en a aucun : c'est a
+   * la personne qui saisit la fiche de le dire, l'outil ne peut pas le deviner.
+   */
+  S.nouvelAttribut = function (partial) {
+    return Object.assign({
+      id: App.uid(),
+      nom: '',
+      valeur: '',
+      unite: '',
+      totaliser: false
+    }, partial || {});
+  };
+
+  /**
+   * Lecture numerique d'une valeur d'attribut, ou null.
+   *
+   * Accepte la virgule decimale : la saisie se fait en francais, « 5,5 » est
+   * la forme naturelle et Number('5,5') vaut NaN.
+   */
+  S.valeurNumerique = function (v) {
+    if (typeof v === 'number') return isFinite(v) ? v : null;
+    var s = String(v == null ? '' : v).trim().replace(',', '.');
+    if (!s || !/^-?\d+(\.\d+)?$/.test(s)) return null;
+    var n = Number(s);
+    return isFinite(n) ? n : null;
+  };
+
+  /** Normalise une liste d'attributs venant d'un fichier. */
+  S.normaliserAttributs = function (liste) {
+    if (!Array.isArray(liste)) return [];
+    return liste
+      .filter(function (a) { return a && typeof a === 'object'; })
+      .map(function (a) {
+        return {
+          id: a.id || App.uid(),
+          nom: String(a.nom || '').trim(),
+          valeur: a.valeur == null ? '' : String(a.valeur),
+          unite: String(a.unite || '').trim(),
+          totaliser: !!a.totaliser
+        };
+      })
+      .filter(function (a) { return a.nom !== ''; });
+  };
+
+  /**
+   * Copie profonde des attributs, pour la regle du snapshot. Une copie de
+   * surface ferait partager les objets entre la fiche et la ligne : modifier
+   * la fiche modifierait un devis deja emis, exactement ce que le snapshot
+   * existe pour empecher.
+   */
+  S.copierAttributs = function (liste) {
+    return S.normaliserAttributs(liste).map(function (a) {
+      return Object.assign({}, a, { id: App.uid() });
+    });
+  };
+
+  /** Noms d'attributs deja employes dans le catalogue, tries. Sert aux suggestions. */
+  S.nomsAttributs = function (data) {
+    var vus = Object.create(null);
+    ((data && data.catalogue) || []).forEach(function (p) {
+      (p.attributs || []).forEach(function (a) {
+        if (a && a.nom) vus[a.nom] = true;
+      });
+    });
+    return Object.keys(vus).sort(function (a, b) { return a.localeCompare(b, 'fr'); });
+  };
+
+  /** Noms d'attributs presents sur les lignes d'un devis, dans l'ordre d'apparition. */
+  S.nomsAttributsDevis = function (devis) {
+    var vus = Object.create(null);
+    var ordre = [];
+    ((devis && devis.lignes) || []).forEach(function (l) {
+      (l.attributs || []).forEach(function (a) {
+        if (a && a.nom && !vus[a.nom]) {
+          vus[a.nom] = true;
+          ordre.push(a.nom);
+        }
+      });
+    });
+    return ordre;
+  };
+
   S.nouveauProduit = function (partial) {
     var p = {
       id: App.uid(),
@@ -137,6 +230,7 @@
       tauxTVA: 20,
       unite: 'u',
       imageFile: null,
+      attributs: [],
       archive: false
     };
     return Object.assign(p, partial || {});
@@ -153,6 +247,10 @@
       clientId: null,          // lien vers le repertoire, peut devenir orphelin
       client: S.clientVide(),  // SNAPSHOT des coordonnees a l'insertion
       lignes: [],
+      // Noms d'attributs promus en colonnes du document. Une liste de NOMS,
+      // pas d'identifiants : les attributs sont recopies sur chaque ligne, et
+      // deux lignes portent deux objets distincts pour le meme nom.
+      colonnesAttributs: [],
       remiseGlobalePct: 0,
       acomptePct: st.acomptePctParDefaut,
       notes: ''
@@ -162,10 +260,11 @@
   /**
    * Cree une ligne de devis a partir d'un produit du catalogue.
    *
-   * REGLE DU SNAPSHOT : la ligne COPIE le libelle, le prix, le taux et le nom
-   * de l'image au moment de l'insertion. Un devis emis ne doit jamais bouger
-   * parce que le catalogue a change. produitId ne sert qu'a proposer une
-   * resynchronisation explicite, jamais a recalculer automatiquement.
+   * REGLE DU SNAPSHOT : la ligne COPIE le libelle, le prix, le taux, le nom
+   * de l'image ET LES ATTRIBUTS au moment de l'insertion. Un devis emis ne
+   * doit jamais bouger parce que le catalogue a change. produitId ne sert qu'a
+   * proposer une resynchronisation explicite, jamais a recalculer
+   * automatiquement.
    */
   S.ligneDepuisProduit = function (produit, quantite) {
     return {
@@ -179,6 +278,7 @@
       unite: produit.unite,
       imageFile: produit.imageFile,
       afficherImage: true,
+      attributs: S.copierAttributs(produit.attributs),
       quantite: quantite == null ? 1 : quantite,
       remisePct: 0
     };
@@ -198,6 +298,7 @@
       unite: 'u',
       imageFile: null,
       afficherImage: false,
+      attributs: [],
       quantite: 1,
       remisePct: 0
     };
@@ -330,7 +431,10 @@
         return Object.assign(S.nouveauClient(), c, { id: c.id || App.uid() });
       }),
       catalogue: (data.catalogue || []).map(function (p) {
-        return Object.assign(S.nouveauProduit(), p, { id: p.id || App.uid() });
+        return Object.assign(S.nouveauProduit(), p, {
+          id: p.id || App.uid(),
+          attributs: S.normaliserAttributs(p.attributs)
+        });
       }),
       devis: (data.devis || []).map(function (d) {
         var dd = Object.assign({}, d);
@@ -343,10 +447,19 @@
           if (ll.afficherImage === undefined) ll.afficherImage = !!ll.imageFile;
           if (ll.quantite === undefined) ll.quantite = 1;
           if (ll.remisePct === undefined) ll.remisePct = 0;
+          ll.attributs = S.normaliserAttributs(ll.attributs);
           return ll;
         });
         if (dd.remiseGlobalePct === undefined) dd.remiseGlobalePct = 0;
         if (dd.acomptePct === undefined) dd.acomptePct = 0;
+        // Une colonne dont plus aucune ligne ne porte l'attribut serait une
+        // colonne vide sur le document : on ne garde que celles qui ont encore
+        // un sens. Supprimer la derniere ligne concernee retire la colonne.
+        var presents = S.nomsAttributsDevis(dd);
+        dd.colonnesAttributs = (Array.isArray(dd.colonnesAttributs) ? dd.colonnesAttributs : [])
+          .filter(function (nom, i, tab) {
+            return presents.indexOf(nom) !== -1 && tab.indexOf(nom) === i;
+          });
         return dd;
       })
     };

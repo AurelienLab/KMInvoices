@@ -196,10 +196,8 @@
         chemin: 'settings.numerotation.prochainSeq', libelle: 'Prochain numéro', taille: 'c3',
         type: 'number', min: 1, nombre: true
       }));
-      c4.grille.appendChild(champLie({
-        chemin: 'settings.validiteJoursParDefaut', libelle: 'Validité par défaut (jours)', taille: 'c3',
-        type: 'number', min: 0, nombre: true
-      }));
+      // Plus de reglage de validite : le document ne porte plus de date de
+      // fin d'offre. Le champ subsiste dans les fichiers anciens.
       c4.grille.appendChild(champLie({
         chemin: 'settings.acomptePctParDefaut', libelle: 'Acompte par défaut (%)', taille: 'c3',
         type: 'number', min: 0, pas: '0.5', nombre: true,

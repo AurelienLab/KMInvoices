@@ -537,7 +537,7 @@
         conditionsPaiement: 'Acompte 30 %'
       },
       devis: {
-        numero: '2026-0042', dateEmission: '2026-08-07', validiteJours: 30,
+        numero: '2026-0042', dateEmission: '2026-08-07',
         client: { nom: 'Ateliers Fournier' },
         lignes: [
           { titre: 'Tour', prixHTCents: 489000, quantite: 1, tauxTVA: 20, unite: 'u' },
@@ -555,10 +555,39 @@
     egalTexte(m.totaux.totalTVATexte, '1 038,00');
     egalTexte(m.totaux.totalTTCTexte, '6 528,00 €');
     egal(m.devis.dateEmissionTexte, '7 août 2026');
-    egal(m.devis.dateValiditeTexte, '6 septembre 2026');
     egal(m.recapTVA.length, 2);
     assert(m.acompte !== null, 'acompte présent');
     egalTexte(m.acompte.montantTexte, '1 958,40 €');
+  });
+
+  test('le modèle n\'expose plus de fin de validité', function () {
+    // Le document est une fiche informative : une date de fin d'offre y
+    // ferait croire à un engagement. Le champ ne doit pas revenir par la
+    // porte du modèle, sinon un template le réafficherait sans qu'on le voie.
+    var m = App.calc.buildDocumentModel({
+      societe: {},
+      devis: { dateEmission: '2026-08-07', validiteJours: 30, lignes: [] }
+    });
+    egal(m.devis.dateEmissionTexte, '7 août 2026');
+    egal(m.devis.dateValiditeTexte, undefined);
+    egal(m.devis.validiteJoursTexte, undefined);
+  });
+
+  test('colonne de remise seulement si une ligne en porte une', function () {
+    var sans = App.calc.buildDocumentModel({
+      societe: {},
+      devis: { lignes: [{ titre: 'A', prixHTCents: 100, quantite: 1, tauxTVA: 20 }] }
+    });
+    egal(sans.afficherRemise, false);
+
+    var avec = App.calc.buildDocumentModel({
+      societe: {},
+      devis: { lignes: [
+        { titre: 'A', prixHTCents: 100, quantite: 1, tauxTVA: 20 },
+        { titre: 'B', prixHTCents: 100, quantite: 1, tauxTVA: 20, remisePct: 5 }
+      ] }
+    });
+    egal(avec.afficherRemise, true);
   });
 
   test('acompte absent quand le pourcentage est nul', function () {
@@ -590,6 +619,171 @@
     });
     egal(m.lignes[0].imageUrl, null);
     egal(m.lignes[1].imageUrl, 'blob:factice');
+  });
+
+  // ========================================================================
+  // Attributs personnalisés
+  // ========================================================================
+
+  groupe('Attributs personnalisés');
+
+  function produitAttr(attrs) {
+    return App.schema.nouveauProduit({
+      reference: 'KM-1', titre: 'Tour', prixHTCents: 100000, attributs: attrs
+    });
+  }
+
+  test('valeurNumerique accepte la virgule décimale', function () {
+    egal(App.schema.valeurNumerique('5'), 5);
+    egal(App.schema.valeurNumerique('5,5'), 5.5);
+    egal(App.schema.valeurNumerique('5.5'), 5.5);
+    egal(App.schema.valeurNumerique(' 12 '), 12);
+    egal(App.schema.valeurNumerique('-3'), -3);
+  });
+
+  test('valeurNumerique refuse ce qui n\'est pas un nombre seul', function () {
+    egal(App.schema.valeurNumerique('400 V triphasé'), null);
+    egal(App.schema.valeurNumerique(''), null);
+    egal(App.schema.valeurNumerique('5 kW'), null);
+    egal(App.schema.valeurNumerique(null), null);
+    egal(App.schema.valeurNumerique('1e3'), null, 'notation scientifique non attendue en saisie');
+  });
+
+  test('normaliserAttributs écarte les entrées sans nom', function () {
+    var a = App.schema.normaliserAttributs([
+      { nom: 'Puissance', valeur: '5', unite: 'kW', totaliser: true },
+      { nom: '   ', valeur: '9' },
+      { valeur: '3' },
+      'nawak'
+    ]);
+    egal(a.length, 1);
+    egal(a[0].nom, 'Puissance');
+    egal(a[0].totaliser, true);
+  });
+
+  test('une ligne copie les attributs, et ne les partage pas', function () {
+    // Même règle que le prix et le libellé : le catalogue peut bouger, un
+    // devis déjà établi ne bouge pas. Une copie de surface partagerait les
+    // objets et le catalogue modifierait le devis à distance.
+    var p = produitAttr([{ nom: 'Puissance', valeur: '5', unite: 'kW', totaliser: true }]);
+    var l = App.schema.ligneDepuisProduit(p, 2);
+
+    egal(l.attributs.length, 1);
+    egal(l.attributs[0].valeur, '5');
+
+    p.attributs[0].valeur = '99';
+    p.attributs.push(App.schema.nouvelAttribut({ nom: 'Poids', valeur: '800' }));
+
+    egal(l.attributs.length, 1, 'la ligne ne doit pas voir le nouvel attribut');
+    egal(l.attributs[0].valeur, '5', 'la ligne garde la valeur figée');
+    assert(l.attributs[0].id !== p.attributs[0].id, 'identifiants distincts');
+  });
+
+  test('totaux multipliés par la quantité', function () {
+    var d = { lignes: [
+      { quantite: 2, attributs: [{ nom: 'Puissance', valeur: '5', unite: 'kW', totaliser: true }] },
+      { quantite: 1, attributs: [{ nom: 'Puissance', valeur: '7', unite: 'kW', totaliser: true }] }
+    ] };
+    var t = App.calc.totauxAttributs(d);
+    egal(t.length, 1);
+    egal(t[0].total, 17);
+    egal(t[0].unite, 'kW');
+  });
+
+  test('sans « totaliser », aucun total', function () {
+    var t = App.calc.totauxAttributs({ lignes: [
+      { quantite: 3, attributs: [{ nom: 'Garantie', valeur: '24', unite: 'mois', totaliser: false }] }
+    ] });
+    egal(t.length, 0);
+  });
+
+  test('valeur non numérique ignorée par les totaux', function () {
+    var t = App.calc.totauxAttributs({ lignes: [
+      { quantite: 1, attributs: [{ nom: 'Tension', valeur: '400 V triphasé', totaliser: true }] }
+    ] });
+    egal(t.length, 0);
+  });
+
+  test('deux unités différentes ne se cumulent jamais', function () {
+    // Additionner des kW et des W donnerait un nombre faux que personne ne
+    // repérerait sur le document.
+    var t = App.calc.totauxAttributs({ lignes: [
+      { quantite: 1, attributs: [{ nom: 'Puissance', valeur: '5', unite: 'kW', totaliser: true }] },
+      { quantite: 1, attributs: [{ nom: 'Puissance', valeur: '800', unite: 'W', totaliser: true }] }
+    ] });
+    egal(t.length, 2);
+    egal(t[0].unite, 'kW');
+    egal(t[1].unite, 'W');
+  });
+
+  test('colonnes d\'attributs dans le modèle de document', function () {
+    var m = App.calc.buildDocumentModel({
+      societe: {},
+      devis: {
+        colonnesAttributs: ['Puissance', 'Tension'],
+        lignes: [
+          { titre: 'A', prixHTCents: 100, quantite: 1, tauxTVA: 20, attributs: [
+            { nom: 'Puissance', valeur: '5', unite: 'kW' },
+            { nom: 'Tension', valeur: '400 V triphasé' }
+          ] },
+          { titre: 'B', prixHTCents: 100, quantite: 1, tauxTVA: 20, attributs: [
+            { nom: 'Puissance', valeur: '7,5', unite: 'kW' }
+          ] }
+        ]
+      }
+    });
+
+    egal(m.colonnes.length, 2);
+    // Unité commune remontée en en-tête : les cellules ne la répètent pas.
+    egal(m.colonnes[0].uniteCommune, 'kW');
+    egalTexte(m.lignes[0].attributsTexte[0], '5');
+    egalTexte(m.lignes[1].attributsTexte[0], '7,5');
+    // Pas d'unité sur « Tension » : rien à remonter.
+    egal(m.colonnes[1].uniteCommune, '');
+    egal(m.lignes[0].attributsTexte[1], '400 V triphasé');
+    // Ligne B ne porte pas l'attribut : cellule vide, le template met un tiret.
+    egal(m.lignes[1].attributsTexte[1], '');
+  });
+
+  test('unités mélangées : l\'unité redescend dans les cellules', function () {
+    var m = App.calc.buildDocumentModel({
+      societe: {},
+      devis: {
+        colonnesAttributs: ['Puissance'],
+        lignes: [
+          { titre: 'A', prixHTCents: 100, quantite: 1, tauxTVA: 20,
+            attributs: [{ nom: 'Puissance', valeur: '5', unite: 'kW' }] },
+          { titre: 'B', prixHTCents: 100, quantite: 1, tauxTVA: 20,
+            attributs: [{ nom: 'Puissance', valeur: '800', unite: 'W' }] }
+        ]
+      }
+    });
+    egal(m.colonnes[0].uniteCommune, '');
+    egalTexte(m.lignes[0].attributsTexte[0], '5 kW');
+    egalTexte(m.lignes[1].attributsTexte[0], '800 W');
+  });
+
+  test('normalize retire une colonne dont plus aucune ligne ne porte l\'attribut', function () {
+    var d = App.schema.normalize({
+      schemaVersion: 1,
+      devis: [{
+        numero: '1', colonnesAttributs: ['Puissance', 'Disparu', 'Puissance'],
+        lignes: [{ titre: 'A', attributs: [{ nom: 'Puissance', valeur: '5' }] }]
+      }]
+    });
+    egal(d.devis[0].colonnesAttributs.length, 1);
+    egal(d.devis[0].colonnesAttributs[0], 'Puissance');
+  });
+
+  test('un fichier antérieur aux attributs reste normalisable', function () {
+    var d = App.schema.normalize({
+      schemaVersion: 1,
+      catalogue: [{ id: 'p1', reference: 'X', titre: 'T' }],
+      devis: [{ id: 'd1', numero: '1', lignes: [{ id: 'l1', titre: 'A' }] }]
+    });
+    egal(d.catalogue[0].attributs.length, 0);
+    egal(d.devis[0].lignes[0].attributs.length, 0);
+    egal(d.devis[0].colonnesAttributs.length, 0);
   });
 
   // ========================================================================
