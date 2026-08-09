@@ -9,3 +9,8 @@ desktop.ini
 # Documents de travail produits par l'application.
 # Un .devis contient des données client réelles : il n'a rien à faire ici.
 *.devis
+/.idea/
+
+# Livrable produit par outils/build.py. Artefact généré : il se reconstruit,
+# il ne se versionne pas. Les versions publiées vivent dans les releases.
+/dist/

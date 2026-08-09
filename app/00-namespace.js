@@ -12,8 +12,17 @@
 
   var App = global.App || {};
 
+  // Source unique de la version. outils/build.py la lit pour estampiller le
+  // livrable ; il ne la reecrit jamais, sous peine de divergence entre la
+  // version affichee et la version reellement executee.
   App.version = '0.1.0-poc';
   App.schemaVersion = 1;
+
+  // Renseigne par outils/build.py dans le livrable en fichier unique, absent
+  // quand la page tourne sur les sources eclatees. Sert a adapter les messages
+  // qui parlent de fichiers voisins : dans le fichier unique, il n'y en a plus.
+  App.build = global.__KMI_BUILD__ ||
+    { fichierUnique: false, version: App.version, date: null };
 
   // Sous-espaces, crees ici pour que l'ordre de chargement des fichiers
   // suivants n'ait pas a s'en preoccuper.

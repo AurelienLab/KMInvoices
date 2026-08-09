@@ -28,6 +28,15 @@
   };
 
   A.erreurJSZip = function () {
+    // Dans le livrable en fichier unique, JSZip est inline : son absence ne
+    // peut plus venir d'un fichier oublie, mais d'un fichier tronque.
+    if (App.build && App.build.fichierUnique) {
+      return new Error(
+        'JSZip est introuvable alors qu\'il est intégré à ce fichier. ' +
+        'Le fichier est incomplet ou corrompu : le retélécharger, ' +
+        'puis remplacer celui du poste.'
+      );
+    }
     return new Error(
       'JSZip est introuvable. Placer le fichier vendor/jszip.min.js ' +
       '(build UMD) à côté de index.html, puis recharger la page. ' +

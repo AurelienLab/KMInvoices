@@ -38,11 +38,22 @@
       bloquant = true;
     }
 
+    // Sur les sources eclatees, JSZip est un fichier a fournir : son absence est
+    // un cas de figure normal, avec une consigne d'installation. Dans le
+    // livrable en fichier unique il est inline, donc toujours present : le test
+    // n'est plus qu'un controle de sanite sur l'integrite du fichier.
     if (!App.archive.disponible()) {
-      alerter('<strong>JSZip est introuvable.</strong> Placer le fichier ' +
-              '<code>vendor/jszip.min.js</code> (build UMD) à côté de <code>index.html</code>, ' +
-              'puis recharger la page. Sans lui, l\'ouverture et l\'enregistrement de fichiers ' +
-              '<code>.devis</code> sont impossibles — le reste de l\'application fonctionne.');
+      if (App.build.fichierUnique) {
+        alerter('<strong>Ce fichier est incomplet ou corrompu.</strong> JSZip devrait y être ' +
+                'intégré et ne s\'y trouve pas. Retélécharger la dernière version, puis ' +
+                'remplacer le fichier du poste.', true);
+        bloquant = true;
+      } else {
+        alerter('<strong>JSZip est introuvable.</strong> Placer le fichier ' +
+                '<code>vendor/jszip.min.js</code> (build UMD) à côté de <code>index.html</code>, ' +
+                'puis recharger la page. Sans lui, l\'ouverture et l\'enregistrement de fichiers ' +
+                '<code>.devis</code> sont impossibles — le reste de l\'application fonctionne.');
+      }
     }
 
     if (!App.templates || !App.templates.default) {

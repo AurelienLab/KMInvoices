@@ -58,6 +58,7 @@
 
 <div class="bar">
   <button class="primary" id="runBtn">Lancer les tests</button>
+  <button id="netBtn">Tester l'accès réseau</button>
   <button id="printBtn">Tester l'impression</button>
   <button id="clearBtn">Effacer la base de test</button>
 </div>
@@ -353,6 +354,33 @@
     return Promise.resolve();
   }
 
+  // Prerequis de la verification de version en ligne (docs/plan-mise-a-jour.md,
+  // phase 2). La requete part avec Origin: null ; GitHub repond
+  // Access-Control-Allow-Origin: *, ce qui devrait suffire a Chromium — mais
+  // un proxy d'entreprise ou une strategie peuvent tout changer, d'ou ce test
+  // SUR LE POSTE CIBLE. S'il echoue, la phase 2 est sans objet.
+  //
+  // JAMAIS declenche automatiquement : cet outil promet qu'aucune donnee ne
+  // sort du poste. Une requete reseau reste un acte volontaire, sur clic.
+  var URL_TEST = 'https://raw.githubusercontent.com/Stuk/jszip/main/package.json';
+
+  function testReseau() {
+    setRow('net', 'info', 'requête en cours vers ' + URL_TEST + '…');
+    var t0 = Date.now();
+    return fetch(URL_TEST, { cache: 'no-store' }).then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + r.statusText);
+      return r.text();
+    }).then(function (txt) {
+      setRow('net', 'ok', 'lecture de ' + txt.length + ' caractères en ' +
+        (Date.now() - t0) + ' ms — CORS accepté depuis Origin: null. ' +
+        'La vérification de version en ligne est possible sur ce poste.');
+    }, function (err) {
+      setRow('net', 'ko', err.name + ' : ' + err.message +
+        ' — pas d\'accès réseau depuis file://. Le livrable en fichier unique ' +
+        'se suffit à lui-même, la vérification de version est à abandonner.');
+    });
+  }
+
   function testLocalStorage() {
     try {
       localStorage.setItem('devisgen_probe', '1');
@@ -385,6 +413,7 @@
     addRow('fsaccess', 'File System Access API');
     addRow('jszip', 'vendor/jszip.min.js');
     addRow('ls', 'localStorage');
+    addRow('net', 'fetch() vers raw.githubusercontent.com');
 
     testEnv();
     testUuid();
@@ -399,10 +428,15 @@
       .then(testFsAccess)
       .then(testJsZip)
       .then(testLocalStorage)
+      .then(function () {
+        setRow('net', 'info', 'non lancé — cliquer « Tester l\'accès réseau ». ' +
+          'Aucune requête n\'est émise sans ce clic.');
+      })
       .then(renderVerdict);
   }
 
   document.getElementById('runBtn').onclick = run;
+  document.getElementById('netBtn').onclick = testReseau;
   document.getElementById('printBtn').onclick = function () { window.print(); };
   document.getElementById('clearBtn').onclick = function () {
     if (sharedDb) { sharedDb.close(); sharedDb = null; }

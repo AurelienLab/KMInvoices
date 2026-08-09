@@ -1,6 +1,12 @@
 # Plan — système de mise à jour depuis l'interface
 
-**État : non implémenté.** Document de cadrage, à reprendre au moment de le construire.
+**État : phase 1 faite, phase 2 en attente d'un test terrain.**
+
+| | |
+|---|---|
+| Phase 1 — livrable en fichier unique | fait, `outils/build.py` |
+| Prérequis phase 2 — test d'accès réseau | outillé dans `probe.html`, **à lancer sur le poste cible** |
+| Phase 2 — vérification de version | non commencée, et conditionnée au résultat ci-dessus |
 
 ---
 
@@ -35,10 +41,31 @@ l'utilisateur. Le seul levier réel est de rendre cette action triviale.
 
 ---
 
-## Phase 1 — Livrable en fichier unique
+## Phase 1 — Livrable en fichier unique — FAIT
 
 **C'est la phase qui a de la valeur.** Elle ne demande aucun réseau et résout l'essentiel
 du problème : mettre à jour devient « glisser un fichier par-dessus un autre ».
+
+### Ce qui a été construit
+
+`outils/build.py` → `dist/KMInvoices.html`. Réponses aux points laissés ouverts :
+
+- **Version : source unique = `App.version` dans `app/00-namespace.js`.** Le build la
+  *lit* pour estampiller le livrable, il ne l'*injecte* pas. Une injection aurait supposé
+  une seconde déclaration ailleurs — exactement la divergence qu'on voulait éviter.
+- **Mode d'exécution : `window.__KMI_BUILD__`**, une bannière générée insérée avant
+  `00-namespace.js`, qui la relit en `App.build`. Absente sur les sources éclatées.
+  C'est ce drapeau qui distingue les deux distributions au démarrage.
+- **JSZip : contrôle de sanité.** `40-archive.js` et `99-boot.js` branchent sur
+  `App.build.fichierUnique`. Sur les sources, le message d'installation est inchangé.
+  Dans le fichier unique, l'absence de JSZip ne peut plus venir d'un fichier oublié mais
+  d'un fichier tronqué : le message le dit, et devient bloquant.
+- **Garde-fou d'autonomie.** Le build refuse de produire quoi que ce soit s'il reste dans
+  `index.html` une référence locale (`href`, `src`) qu'il n'a pas inlinée. Un futur
+  `<img src>` ou une balise écrite autrement fera échouer le build au lieu de produire un
+  livrable amputé en silence.
+- **`dist/` est ignoré par git.** Artefact généré ; les versions publiées vivent ailleurs.
+- **Poids réel : 330 Ko**, pas 250. L'estimation datait d'avant la croissance des vues.
 
 ### Principe
 
@@ -75,10 +102,18 @@ la conséquence : **le livrable devient un artefact généré**, distinct des so
 
 ### Vérification
 
-- `tests.html` passe toujours au vert sur les sources.
-- Le fichier unique produit un devis rigoureusement identique à celui des sources —
-  comparer deux PDF sur le même jeu de données.
-- Poids attendu : environ 250 Ko, dont 97 Ko de JSZip.
+Automatisée, faite :
+
+- les 18 blocs `<script>` du fichier produit passent `node --check` ;
+- aucune référence locale ne subsiste dans le livrable ;
+- la bannière de build précède bien `00-namespace.js`.
+
+**Restant à valider dans un navigateur** — ces deux points ne peuvent pas être vérifiés
+autrement :
+
+- [ ] `tests.html` toujours au vert sur les sources.
+- [ ] Le fichier unique produit un devis rigoureusement identique à celui des sources —
+      comparer deux PDF sur le même jeu de données.
 
 ---
 
@@ -88,8 +123,12 @@ Utile seulement si le poste a un accès réseau. À ne construire qu'après la p
 
 ### Prérequis à valider avant d'écrire quoi que ce soit
 
-**Ajouter un test à `probe.html`** : un `fetch()` depuis `file://` vers
-`raw.githubusercontent.com`.
+**Le test est en place dans `probe.html`** — bouton « Tester l'accès réseau » : un
+`fetch()` depuis `file://` vers `raw.githubusercontent.com`.
+
+Il n'est **jamais déclenché automatiquement**. L'outil promet qu'aucune donnée ne sort du
+poste ; émettre une requête au chargement d'une page de diagnostic contredirait cette
+promesse dans les faits, même sans rien transmettre. La requête reste un acte volontaire.
 
 La requête part avec `Origin: null`. GitHub répond `Access-Control-Allow-Origin: *`, ce
 qui devrait suffire à Chromium — mais cela reste à confirmer **sur le poste cible**, où un
@@ -152,22 +191,33 @@ complexité.
 
 ---
 
-## Décisions à prendre le moment venu
+## Décisions
+
+2. **Le fichier unique remplace-t-il les sources éclatées ? — TRANCHÉ : les deux
+   coexistent.** Le fichier unique est le livrable, les sources sont l'environnement de
+   développement. Ce sont bien deux chemins à tester, mais le second ne peut pas
+   disparaître : `tests.html` et `template-lab.html` travaillent dessus. Le drapeau
+   `App.build.fichierUnique` rend la différence explicite partout où elle compte.
+
+Restent ouvertes, et sans objet tant que le test réseau n'a pas été lancé sur le poste :
 
 1. **Le dépôt reste-t-il public ?** La phase 2 lit une URL publique. Un dépôt privé
    imposerait un jeton, donc un secret dans un fichier lisible par tous — inacceptable.
    Dans ce cas, publier le `version.json` ailleurs, ou renoncer à la phase 2.
-2. **Le fichier unique remplace-t-il les sources éclatées comme livrable, ou les deux
-   coexistent-ils ?** Deux modes de distribution veulent dire deux chemins à tester.
 3. **Le poste cible a-t-il un accès réseau ?** Si non, la phase 2 est sans objet.
 4. **Où sont publiées les versions ?** Releases GitHub, partage réseau interne, autre.
 
 ## Critères d'acceptation
 
+Phase 1 :
+
+- [x] L'ordre de concaténation est dérivé de `index.html`, pas redéclaré.
 - [ ] `outils/build.py` produit un `KMInvoices.html` qui s'ouvre par double-clic et se
-      comporte comme les sources.
+      comporte comme les sources. *(à confirmer dans Edge)*
 - [ ] Le PDF produit par le fichier unique est identique à celui des sources sur un même
-      devis.
-- [ ] L'ordre de concaténation est dérivé de `index.html`, pas redéclaré.
+      devis. *(à confirmer dans Edge)*
+
+Phase 2, si elle voit le jour :
+
 - [ ] Hors ligne, l'application ne montre aucun message lié à la mise à jour.
 - [ ] Aucune vérification de version ne peut faire perdre du travail non enregistré.

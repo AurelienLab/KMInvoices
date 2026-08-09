@@ -18,6 +18,7 @@ ne quitte le poste : tout vit dans le fichier `.devis` que vous enregistrez sur 
 - [Imprimer en PDF](#imprimer-en-pdf)
 - [Réglage Edge recommandé](#réglage-edge-recommandé)
 - [Procédure de sauvegarde](#procédure-de-sauvegarde)
+- [Mettre à jour l'outil](#mettre-à-jour-loutil)
 - [Le format `.devis`](#le-format-devis)
 - [Limitations connues](#limitations-connues)
 - [Personnaliser le document](#personnaliser-le-document)
@@ -36,6 +37,10 @@ ne quitte le poste : tout vit dans le fichier `.devis` que vous enregistrez sur 
 | Installation | **Aucune.** Pas de Node.js, pas de Python, pas de droits administrateur |
 | Réseau | **Aucun.** L'outil fonctionne intégralement hors ligne |
 
+Ces prérequis décrivent le **poste d'utilisation**. Le poste de développement a besoin de
+Python 3 pour produire le [fichier unique](#produire-le-fichier-unique) — jamais le poste
+d'utilisation, qui exécute le livrable tel quel.
+
 Firefox et Safari ne sont pas pris en charge. Le moteur d'impression PDF et le
 comportement d'IndexedDB en `file://` diffèrent trop pour être garantis.
 
@@ -43,8 +48,21 @@ comportement d'IndexedDB en `file://` diffèrent trop pour être garantis.
 
 ## Installation
 
-1. Copier le dossier complet où vous voulez sur le poste — un disque local, une clé USB,
-   un partage réseau. Aucun chemin n'est codé en dur.
+L'outil se distribue de deux façons. Les deux se comportent à l'identique.
+
+### Fichier unique — recommandé sur le poste de travail
+
+1. Copier `KMInvoices.html` où vous voulez sur le poste.
+2. Double-cliquer dessus.
+
+C'est tout : le CSS, le JavaScript et JSZip sont intégrés au fichier. Rien à installer,
+rien à assembler, aucun dossier à garder intact. Un seul fichier à copier, à sauvegarder,
+et à remplacer le jour d'une [mise à jour](#mettre-à-jour-loutil).
+
+### Sources éclatées — pour développer
+
+1. Copier le dossier complet où vous voulez — un disque local, une clé USB, un partage
+   réseau. Aucun chemin n'est codé en dur.
 
 2. **Déposer `jszip.min.js` dans le dossier `vendor/`.**
 
@@ -60,8 +78,8 @@ comportement d'IndexedDB en `file://` diffèrent trop pour être garantis.
 
 3. Double-cliquer sur `index.html`.
 
-Rien d'autre. Pas de `npm install`, pas d'étape de compilation : le livrable est
-exécutable tel quel.
+Rien d'autre. Pas de `npm install`, pas d'étape de compilation : les sources sont
+exécutables telles quelles.
 
 ---
 
@@ -237,6 +255,43 @@ suivante suffit :
 
 ---
 
+## Mettre à jour l'outil
+
+**Version fichier unique :**
+
+1. Enregistrer le document en cours (`Ctrl+S`). Une mise à jour n'efface aucun `.devis`,
+   mais le cache de reprise du navigateur, lui, n'est pas garanti.
+2. Fermer l'onglet.
+3. Remplacer l'ancien `KMInvoices.html` par le nouveau.
+4. Rouvrir par double-clic.
+
+Les fichiers `.devis` existants restent lisibles : le format est versionné et les
+migrations sont automatiques à l'ouverture.
+
+**Version sources éclatées :** remplacer le dossier complet, en conservant `vendor/`.
+
+> **L'application ne peut pas se mettre à jour toute seule.** Une page ouverte en `file://`
+> n'a aucun droit d'écriture sur le disque — c'est la même limitation qui impose de passer
+> par un téléchargement à chaque enregistrement. Le remplacement du fichier restera
+> toujours un geste manuel. Voir [le cadrage](docs/plan-mise-a-jour.md).
+
+### Produire le fichier unique
+
+Sur le **poste de développement** uniquement :
+
+```
+python3 outils/build.py
+```
+
+Le script lit les balises `<script src>` et `<link href>` de `index.html`, dans l'ordre,
+et écrit `dist/KMInvoices.html`. Aucune dépendance, Python 3 suffit.
+
+`dist/KMInvoices.html` est un **artefact généré** : il n'est pas versionné et ne se
+modifie jamais à la main. Toute correction se fait dans les sources, suivie d'un nouveau
+build.
+
+---
+
 ## Le format `.devis`
 
 Un fichier `.devis` est une **archive ZIP** que vous pouvez ouvrir avec n'importe quel
@@ -366,10 +421,18 @@ templates/default/
   └── template.css       tout porté sous .doc-root, tokens en tête
 vendor/
   └── jszip.min.js       à fournir
+outils/
+  └── build.py           produit dist/KMInvoices.html, le livrable en fichier unique
+dist/
+  └── KMInvoices.html    artefact généré, non versionné
 probe.html               validation de l'architecture sur un poste
 tests.html               lanceur de tests
 template-lab.html        mise au point du template sur données factices
 ```
+
+`probe.html`, `tests.html` et `template-lab.html` restent des fichiers séparés et
+travaillent sur les sources : ce sont des outils de mise au point, ils n'ont rien à faire
+dans le livrable.
 
 ### Ordre de chargement
 
@@ -390,12 +453,17 @@ Cette liste est répétée à l'identique dans `tests.html` et `template-lab.htm
 duplication assumée : sans `fetch` ni modules, il n'existe pas de chargeur possible en
 `file://`.
 
+`outils/build.py` ne la duplique pas : il **dérive** l'ordre des balises d'`index.html`.
+Ajouter un fichier à l'application ne demande donc aucune modification du script de build.
+
 ### Contraintes d'écriture
 
 Le code respecte des contraintes qui ne sont pas négociables sur ce poste :
 
 - JavaScript vanilla ES2020, scripts classiques, aucun module ES ;
-- aucune étape de compilation, aucun gestionnaire de paquets ;
+- aucune étape de compilation **sur le poste cible**, aucun gestionnaire de paquets — les
+  sources s'exécutent telles quelles, et `outils/build.py` ne fait que les concaténer :
+  pas de transpilation, pas de minification, aucune transformation du code ;
 - aucune ressource chargée depuis un CDN ;
 - aucune image référencée par chemin relatif — elles contamineraient le canvas en
   `file://` et rendraient `toDataURL()` inutilisable ; tout passe par des `Blob` et des
@@ -415,6 +483,11 @@ Valide l'architecture sur un poste donné : disponibilité d'IndexedDB, aller-re
 
 À lancer en premier sur tout nouveau poste. Le verdict en haut de page indique si
 l'architecture tient.
+
+Le bouton **« Tester l'accès réseau »** est à part : il émet la seule requête sortante de
+tout le projet, vers un fichier public en lecture seule, et **uniquement sur clic**. Il
+sert à trancher si une vérification de version en ligne est envisageable sur ce poste
+(voir [le cadrage](docs/plan-mise-a-jour.md)). Rien n'est envoyé, rien n'est mesuré.
 
 ### `tests.html`
 
@@ -440,8 +513,12 @@ et le logo.
 ## Dépannage
 
 **« JSZip est introuvable » au démarrage**
-Le fichier `vendor/jszip.min.js` est absent, mal nommé, ou c'est un build ESM. Voir
-[Installation](#installation).
+Sur les sources éclatées : `vendor/jszip.min.js` est absent, mal nommé, ou c'est un build
+ESM. Voir [Installation](#installation).
+
+**« Ce fichier est incomplet ou corrompu » au démarrage**
+Version fichier unique. JSZip y est intégré : s'il manque, le fichier a été tronqué —
+copie interrompue, antivirus, partage réseau. Retélécharger, puis remplacer.
 
 **Une page blanche s'imprime avant le document**
 Un conteneur de la vue d'édition survit à l'impression avec une hauteur non nulle. Vérifier
@@ -477,8 +554,9 @@ résidu d'arrondi étant absorbé par la plus grosse base.
 
 ## Feuille de route
 
-- [Système de mise à jour depuis l'interface](docs/plan-mise-a-jour.md) — cadrage écrit,
-  non implémenté.
+- [Système de mise à jour](docs/plan-mise-a-jour.md) — phase 1 (livrable en fichier
+  unique) faite. Phase 2, vérification de version en ligne : suspendue au test d'accès
+  réseau de `probe.html` sur le poste cible.
 
 ---
 
