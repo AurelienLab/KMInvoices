@@ -234,13 +234,30 @@
       'Indemnité forfaitaire de recouvrement : 40 €.'
   };
 
+  /*
+   * Descriptions au format de stockage reel : du HTML assaini.
+   *
+   * Elles n'apparaissent plus dans le tableau — elles alimentent les fiches
+   * annexees. Le melange volontaire de texte simple, de gras et de listes est
+   * ce qui permet de verifier que la typographie des fiches tient debout quel
+   * que soit ce que l'editeur produit.
+   */
   var DESCRIPTIONS = [
-    'Machine révisée en atelier, contrôle géométrique complet effectué.\nGarantie pièces et main-d\'œuvre 12 mois hors consommables.',
-    'Livraison sur site, mise à niveau et calibrage inclus.\nFormation opérateur d\'une demi-journée assurée à la réception.',
-    'Équipement d\'occasion, état de fonctionnement vérifié.\nCarter de protection conforme et arrêt d\'urgence testé.',
-    'Modèle neuf sous garantie constructeur, notice en français fournie.',
-    'Reprise possible de votre ancien matériel, valorisation à définir après expertise sur site.\nLe montant de la reprise viendra en déduction du solde et fera l\'objet d\'un avoir distinct.\nDépose et évacuation de l\'ancien équipement comprises, y compris manutention et mise en conformité de l\'emplacement libéré.'
-  ];
+    'Machine révisée en atelier, contrôle géométrique complet effectué.<br>' +
+      '<b>Garantie pièces et main-d\'œuvre 12 mois</b> hors consommables.',
+    'Livraison sur site, mise à niveau et calibrage inclus.' +
+      '<ul><li>Formation opérateur d\'une demi-journée</li>' +
+      '<li>Jeu d\'outillage de première maintenance</li>' +
+      '<li>Notice et schémas électriques en français</li></ul>',
+    '<i>Équipement d\'occasion</i>, état de fonctionnement vérifié.<br>' +
+      'Carter de protection conforme et arrêt d\'urgence testé.',
+    'Modèle neuf sous <u>garantie constructeur</u>, notice en français fournie.',
+    'Reprise possible de votre ancien matériel, valorisation à définir après ' +
+      'expertise sur site.<br>Le montant de la reprise viendra en déduction du ' +
+      'solde et fera l\'objet d\'un avoir distinct.<br>Dépose et évacuation de ' +
+      'l\'ancien équipement comprises, y compris manutention et mise en ' +
+      'conformité de l\'emplacement libéré.'
+  ].map(App.schema.normaliserDescription);
 
   var UNITES = ['u', 'u', 'u', 'forfait', 'h', 'jour'];
   var TAUX   = [20, 20, 20, 20, 20, 10, 20, 20, 0, 20, 10, 20];

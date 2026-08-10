@@ -786,6 +786,267 @@
     egal(d.devis[0].colonnesAttributs.length, 0);
   });
 
+  test('unité la plus fréquente d\'une caractéristique', function () {
+    var data = { catalogue: [
+      { attributs: [{ nom: 'Puissance', unite: 'kW' }] },
+      { attributs: [{ nom: 'Puissance', unite: 'kW' }] },
+      { attributs: [{ nom: 'Puissance', unite: 'W' }] }
+    ] };
+    egal(App.schema.uniteHabituelle(data, 'Puissance'), 'kW');
+    egal(App.schema.uniteHabituelle(data, 'Poids'), '');
+  });
+
+  // ========================================================================
+  // Cumuls en bas de colonne
+  // ========================================================================
+
+  groupe('Cumuls en bas de colonne');
+
+  function modeleColonnes(devis) {
+    return App.calc.buildDocumentModel({
+      societe: {},
+      devis: Object.assign({ lignes: [], colonnesAttributs: [] }, devis),
+      imageUrls: {}
+    });
+  }
+
+  test('le cumul d\'une colonne suit les quantités', function () {
+    var m = modeleColonnes({
+      colonnesAttributs: ['Puissance', 'Tension'],
+      lignes: [
+        { id: '1', titre: 'A', quantite: 2, prixHTCents: 100, tauxTVA: 20, attributs: [
+          { nom: 'Puissance', valeur: '5', unite: 'kW', totaliser: true },
+          { nom: 'Tension', valeur: '400 V', totaliser: true }
+        ] },
+        { id: '2', titre: 'B', quantite: 1, prixHTCents: 100, tauxTVA: 20, attributs: [
+          { nom: 'Puissance', valeur: '7', unite: 'kW', totaliser: true }
+        ] }
+      ]
+    });
+    assert(m.afficherTotauxColonnes, 'ligne de totaux attendue');
+    // 5 x 2 + 7 x 1. L'unité est déjà dans l'en-tête, elle ne s'y répète pas.
+    egalTexte(m.colonnes[0].totalTexte, '17');
+    // « 400 V » n'est pas un nombre : rien à cumuler, et surtout rien à inventer.
+    egal(m.colonnes[1].totalTexte, '');
+  });
+
+  test('un cumul affiché en colonne n\'est pas répété dans l\'encart', function () {
+    var m = modeleColonnes({
+      colonnesAttributs: ['Puissance'],
+      lignes: [{ id: '1', titre: 'A', quantite: 1, prixHTCents: 100, tauxTVA: 20,
+        attributs: [{ nom: 'Puissance', valeur: '5', unite: 'kW', totaliser: true }] }]
+    });
+    egalTexte(m.colonnes[0].totalTexte, '5');
+    egal(m.totauxAttributs.length, 0);
+  });
+
+  test('un cumul sans colonne reste dans l\'encart', function () {
+    var m = modeleColonnes({
+      colonnesAttributs: [],
+      lignes: [{ id: '1', titre: 'A', quantite: 1, prixHTCents: 100, tauxTVA: 20,
+        attributs: [{ nom: 'Puissance', valeur: '5', unite: 'kW', totaliser: true }] }]
+    });
+    egal(m.totauxAttributs.length, 1);
+    egal(m.afficherTotauxColonnes, false);
+  });
+
+  test('unités mélangées : aucun cumul en colonne, l\'encart reprend la main', function () {
+    var m = modeleColonnes({
+      colonnesAttributs: ['Puissance'],
+      lignes: [
+        { id: '1', titre: 'A', quantite: 1, prixHTCents: 100, tauxTVA: 20,
+          attributs: [{ nom: 'Puissance', valeur: '5', unite: 'kW', totaliser: true }] },
+        { id: '2', titre: 'B', quantite: 1, prixHTCents: 100, tauxTVA: 20,
+          attributs: [{ nom: 'Puissance', valeur: '800', unite: 'W', totaliser: true }] }
+      ]
+    });
+    egal(m.colonnes[0].totalTexte, '');
+    egal(m.totauxAttributs.length, 2, 'les deux unités restent lisibles séparément');
+  });
+
+  test('une caractéristique non totalisable ne produit aucun cumul', function () {
+    var m = modeleColonnes({
+      colonnesAttributs: ['Garantie'],
+      lignes: [{ id: '1', titre: 'A', quantite: 3, prixHTCents: 100, tauxTVA: 20,
+        attributs: [{ nom: 'Garantie', valeur: '24', unite: 'mois', totaliser: false }] }]
+    });
+    egal(m.colonnes[0].totalTexte, '');
+    egal(m.afficherTotauxColonnes, false);
+  });
+
+  // ========================================================================
+  // Colonne de TVA
+  // ========================================================================
+
+  groupe('Colonne de TVA');
+
+  test('un taux unique fait disparaître la colonne', function () {
+    var m = modeleColonnes({ lignes: [
+      { id: '1', titre: 'A', quantite: 1, prixHTCents: 100, tauxTVA: 20 },
+      { id: '2', titre: 'B', quantite: 1, prixHTCents: 100, tauxTVA: 20 }
+    ] });
+    egal(m.afficherTVA, false);
+    // Le taux ne disparaît pas du document : il reste au récapitulatif.
+    egal(m.recapTVA.length, 1);
+  });
+
+  test('deux taux différents la font revenir', function () {
+    var m = modeleColonnes({ lignes: [
+      { id: '1', titre: 'A', quantite: 1, prixHTCents: 100, tauxTVA: 20 },
+      { id: '2', titre: 'B', quantite: 1, prixHTCents: 100, tauxTVA: 5.5 }
+    ] });
+    egal(m.afficherTVA, true);
+  });
+
+  // ========================================================================
+  // Texte riche
+  // ========================================================================
+
+  groupe('Texte riche');
+
+  test('les balises autorisées passent, les autres disparaissent', function () {
+    egal(App.schema.assainirHtml('<b>gras</b> et <i>italique</i>'),
+         '<b>gras</b> et <i>italique</i>');
+    egal(App.schema.assainirHtml('<ul><li>a</li><li>b</li></ul>'),
+         '<ul><li>a</li><li>b</li></ul>');
+    egal(App.schema.assainirHtml('<BR/>'), '<br>', 'casse et auto-fermeture normalisées');
+  });
+
+  test('aucun attribut ne survit', function () {
+    // La sortie n\'est pas filtrée, elle est RECONSTRUITE : il n\'existe pas
+    // d\'attribut à contourner, puisqu\'aucun n\'est jamais réémis.
+    egal(App.schema.assainirHtml('<b onclick="alert(1)" style="color:red">x</b>'), '<b>x</b>');
+    egal(App.schema.assainirHtml('<a href="javascript:alert(1)">x</a>'), 'x');
+    egal(App.schema.assainirHtml('<img src=x onerror=alert(1)>'), '');
+  });
+
+  test('une balise toxique emporte son contenu', function () {
+    // Le « <\/ » n'est pas une coquetterie : une fermeture de script écrite
+    // littéralement referme le bloc de cette page au moment où le navigateur
+    // la parse, bien avant que JavaScript ne voie la chaîne.
+    egal(App.schema.assainirHtml('<script>alert(1)<\/script>ok'), 'ok');
+    egal(App.schema.assainirHtml('<svg><script>alert(1)<\/script></svg>'), '');
+    egal(App.schema.assainirHtml('<style>body{display:none}</style>ok'), 'ok');
+  });
+
+  test('un chevron isolé reste du texte', function () {
+    // Une balise, c'est « < » COLLÉ à une lettre. Tolérer l'espace ferait
+    // lire « a < b & c > d » comme un gras, et le texte disparaîtrait.
+    egal(App.schema.assainirHtml('a < b & c > d'), 'a &lt; b &amp; c &gt; d');
+  });
+
+  test('les entités déjà formées ne sont pas réechappées', function () {
+    egal(App.schema.assainirHtml('caf&eacute; &amp; th&#233;'), 'caf&eacute; &amp; th&#233;');
+  });
+
+  test('les balises déséquilibrées sont réparées', function () {
+    egal(App.schema.assainirHtml('<b>oups'), '<b>oups</b>');
+    egal(App.schema.assainirHtml('oups</b>'), 'oups');
+    egal(App.schema.assainirHtml('<b><i>x</b></i>'), '<b><i>x</i></b>');
+  });
+
+  test('aller-retour HTML / texte brut', function () {
+    egal(App.schema.htmlDepuisTexte('a\nb'), 'a<br>b');
+    egal(App.schema.htmlVersTexte('<ul><li>a</li><li>b</li></ul>'), 'a\nb');
+    // Un seul désechappement : &amp;lt; vaut le texte « &lt; », pas « < ».
+    egal(App.schema.htmlVersTexte('x &amp;lt; y'), 'x &lt; y');
+  });
+
+  test('une description antérieure au WYSIWYG se migre toute seule', function () {
+    egal(App.schema.normaliserDescription('Ligne 1\nLigne 2'), 'Ligne 1<br>Ligne 2');
+    egal(App.schema.normaliserDescription('5 < 6'), '5 &lt; 6');
+    egal(App.schema.normaliserDescription('<b>x</b>'), '<b>x</b>');
+    // Un fragment sans le moindre texte n'est pas une description.
+    egal(App.schema.normaliserDescription('<b></b>'), '');
+  });
+
+  test('normalize assainit toutes les descriptions entrantes', function () {
+    var d = App.schema.normalize({
+      schemaVersion: 1,
+      catalogue: [{ id: 'p', reference: 'R', titre: 'T', description: '<b onclick=x>a</b>' }],
+      devis: [{ id: 'd', lignes: [{ id: 'l', description: 'x\ny' }] }]
+    });
+    egal(d.catalogue[0].description, '<b>a</b>');
+    egal(d.devis[0].lignes[0].description, 'x<br>y');
+  });
+
+  // ========================================================================
+  // Fiches produit annexées
+  // ========================================================================
+
+  groupe('Fiches produit annexées');
+
+  test('une fiche par produit, quel que soit le nombre de lignes', function () {
+    var m = modeleColonnes({ lignes: [
+      { id: '1', produitId: 'P', reference: 'KM-1', titre: 'Tour', quantite: 1,
+        prixHTCents: 150000, tauxTVA: 20, unite: 'u', description: '<b>Costaud</b>',
+        attributs: [{ nom: 'Puissance', valeur: '5', unite: 'kW' }] },
+      { id: '2', produitId: 'P', reference: 'KM-1', titre: 'Tour', quantite: 3,
+        prixHTCents: 150000, tauxTVA: 20, unite: 'u', description: '<b>Costaud</b>',
+        attributs: [{ nom: 'Puissance', valeur: '5', unite: 'kW' }] }
+    ] });
+    egal(m.fiches.length, 1);
+    egal(m.lignes[0].ficheAncre, m.lignes[1].ficheAncre);
+    egal(m.fiches[0].descriptionHtml, '<b>Costaud</b>');
+    egal(m.fiches[0].attributs.length, 1);
+    egalTexte(m.fiches[0].attributs[0].valeurTexte, '5 kW');
+  });
+
+  test('une ligne sans rien à montrer n\'a pas de fiche', function () {
+    // Photo, description, caractéristiques : sans aucune des trois, la fiche
+    // serait une page blanche portant un titre déjà lisible dans le tableau.
+    var m = modeleColonnes({ lignes: [
+      { id: '1', titre: 'Livraison', quantite: 1, prixHTCents: 5000, tauxTVA: 20, attributs: [] }
+    ] });
+    egal(m.fiches.length, 0);
+    egal(m.lignes[0].ficheAncre, null);
+  });
+
+  test('une photo absente appelle un substitut, une photo décochée non', function () {
+    // Distinction essentielle : « pas de photo » est un manque, que le
+    // document comble ; « photo décochée » est une décision, qu'il respecte.
+    var ligne = function (o) {
+      return Object.assign({ id: '1', titre: 'A', quantite: 1, prixHTCents: 100,
+        tauxTVA: 20, description: 'x', attributs: [] }, o);
+    };
+
+    var sans = modeleColonnes({ lignes: [ligne({})] });
+    egal(sans.lignes[0].imageUrl, null);
+    egal(sans.lignes[0].sansPhoto, true, 'aucune photo : substitut attendu');
+    egal(sans.fiches[0].sansPhoto, true);
+
+    var avec = App.calc.buildDocumentModel({
+      societe: {}, imageUrls: { 'i.jpg': 'blob:factice' },
+      devis: { colonnesAttributs: [], lignes: [ligne({ imageFile: 'i.jpg' })] }
+    });
+    egal(avec.lignes[0].imageUrl, 'blob:factice');
+    egal(avec.lignes[0].sansPhoto, false, 'photo réelle : aucun substitut');
+
+    var decochee = App.calc.buildDocumentModel({
+      societe: {}, imageUrls: { 'i.jpg': 'blob:factice' },
+      devis: { colonnesAttributs: [],
+               lignes: [ligne({ imageFile: 'i.jpg', afficherImage: false })] }
+    });
+    egal(decochee.lignes[0].imageUrl, null);
+    egal(decochee.lignes[0].sansPhoto, false, 'décochée : ni photo ni substitut');
+    egal(decochee.fiches[0].sansPhoto, false);
+
+    // Image référencée mais introuvable dans le stockage : c'est une absence.
+    var perdue = modeleColonnes({ lignes: [ligne({ imageFile: 'perdue.jpg' })] });
+    egal(perdue.lignes[0].sansPhoto, true);
+  });
+
+  test('les ancres changent à chaque rendu', function () {
+    // L'aperçu et le conteneur d'impression coexistent dans la même page :
+    // des ancres stables y seraient en double, et un lien du document imprimé
+    // pourrait pointer sur l'aperçu, invisible à l'impression.
+    var ligne = { id: '1', titre: 'X', quantite: 1, prixHTCents: 1, tauxTVA: 20,
+                  description: 'a', attributs: [] };
+    var a = modeleColonnes({ lignes: [ligne] }).fiches[0].ancre;
+    var b = modeleColonnes({ lignes: [ligne] }).fiches[0].ancre;
+    assert(a !== b, 'deux rendus ne doivent pas produire la même ancre');
+  });
+
   // ========================================================================
   // Archive .devis
   // ========================================================================

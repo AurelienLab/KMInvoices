@@ -146,11 +146,16 @@
        50-store       état applicatif, autosave, drapeau de modification.
        60-ui-shell    coquille : en-tête, navigation, notifications.
                       DOIT précéder les vues, qui s'enregistrent dans App.ui.vues.
-       60-ui-societe   \
-       60-ui-clients    \ vues d'édition. L'ordre entre elles fixe l'ordre
-       60-ui-catalogue  /  d'affichage dans la navigation.
-       60-ui-devis     /  60-ui-devis expose UI.creerDevisPour, appelé par
-                          la vue clients — au clic, donc l'ordre importe peu.
+       60-ui-accueil   \  tableau de bord. PREMIER des vues, et ce n'est pas
+                       |  cosmétique : la coquille ouvre la première vue
+                       |  enregistrée au démarrage. Le déplacer changerait la
+                       |  page d'accueil de l'application.
+       60-ui-societe   |
+       60-ui-clients   |  vues d'édition. L'ordre entre elles fixe l'ordre
+       60-ui-catalogue |  d'affichage dans la navigation.
+       60-ui-devis     /  60-ui-devis expose UI.creerDevisPour et UI.ouvrirDevis,
+                          appelés par les vues clients et accueil — au clic,
+                          donc l'ordre importe peu.
        70-preview     montage du rendu pour l'aperçu et l'impression.
        80-maj         vérification de version. Facultatif : son absence ne
                       change rien au reste. Dépend de 50-store (sauvegarde
@@ -173,6 +178,7 @@
 <script src="app/45-images.js"></script>
 <script src="app/50-store.js"></script>
 <script src="app/60-ui-shell.js"></script>
+<script src="app/60-ui-accueil.js"></script>
 <script src="app/60-ui-societe.js"></script>
 <script src="app/60-ui-clients.js"></script>
 <script src="app/60-ui-catalogue.js"></script>

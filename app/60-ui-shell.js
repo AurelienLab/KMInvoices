@@ -20,6 +20,7 @@
   // --- Icones (SVG inline : aucun fichier externe, aucun CDN) --------------
 
   UI.icones = {
+    accueil: '<path d="M4 4h7v7H4zM13 4h7v4h-7zM13 10h7v10h-7zM4 13h7v7H4z"/>',
     societe: '<path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-5h6v5M9 11h.01M15 11h.01"/>',
     clients: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
     catalogue: '<path d="M3 7h18M3 12h18M3 17h18"/>',
@@ -309,6 +310,129 @@
     }
 
     wrap.input = input;
+    return wrap;
+  };
+
+  /**
+   * Champ de texte mis en forme — un WYSIWYG deliberement minuscule.
+   *
+   * Six commandes, pas une de plus : gras, italique, souligne, deux listes,
+   * et l'effacement de la mise en forme. Pas de couleurs, pas de tailles, pas
+   * de polices — le document a sa typographie, une description qui la
+   * contredit fait une proposition qui ressemble a un patchwork.
+   *
+   * Repose sur document.execCommand. L'API est marquee obsolete mais reste la
+   * seule implementee partout, et c'est ici un outil local mono-navigateur :
+   * la reecrire au-dessus de Selection/Range couterait dix fois plus cher pour
+   * strictement le meme resultat.
+   *
+   * La valeur remontee est TOUJOURS passee par App.schema.assainirHtml : le
+   * contenu d'un contenteditable est du HTML fourni par l'exterieur des
+   * qu'un collage entre en jeu.
+   *
+   * @param {object} opts
+   *   .libelle   intitule, facultatif
+   *   .valeur    HTML initial
+   *   .hauteur   hauteur minimale en px
+   *   .compact   barre d'outils masquee tant que le champ n'a pas le focus
+   *   .onchange  recoit le HTML assaini
+   */
+  var COMMANDES_RICHES = [
+    { cmd: 'bold', libelle: 'G', titre: 'Gras (Ctrl+B)', classe: 'riche-b' },
+    { cmd: 'italic', libelle: 'I', titre: 'Italique (Ctrl+I)', classe: 'riche-i' },
+    { cmd: 'underline', libelle: 'S', titre: 'Souligné (Ctrl+U)', classe: 'riche-u' },
+    { cmd: 'insertUnorderedList', libelle: '•', titre: 'Liste à puces' },
+    { cmd: 'insertOrderedList', libelle: '1.', titre: 'Liste numérotée' },
+    { cmd: 'removeFormat', libelle: '⌫', titre: 'Effacer la mise en forme' }
+  ];
+
+  UI.champRiche = function (opts) {
+    var wrap = document.createElement('div');
+    wrap.className = 'champ' + (opts.taille ? ' ' + opts.taille : '');
+
+    if (opts.libelle) {
+      var lab = document.createElement('label');
+      lab.textContent = opts.libelle;
+      wrap.appendChild(lab);
+    }
+
+    var boite = document.createElement('div');
+    boite.className = 'riche' + (opts.compact ? ' riche-compact' : '');
+
+    var barre = document.createElement('div');
+    barre.className = 'riche-barre';
+    boite.appendChild(barre);
+
+    var zone = document.createElement('div');
+    zone.className = 'riche-zone';
+    zone.contentEditable = 'true';
+    zone.spellcheck = true;
+    if (opts.hauteur) zone.style.minHeight = opts.hauteur + 'px';
+    if (opts.placeholder) zone.dataset.vide = opts.placeholder;
+    zone.innerHTML = App.schema.assainirHtml(opts.valeur || '');
+    boite.appendChild(zone);
+
+    function signaler() {
+      majPlaceholder();
+      opts.onchange(App.schema.assainirHtml(zone.innerHTML), zone);
+    }
+
+    function majPlaceholder() {
+      zone.classList.toggle('vide', !App.schema.htmlVersTexte(zone.innerHTML));
+    }
+
+    function commander(cmd) {
+      zone.focus();
+      try {
+        // false : execCommand doit produire <b>/<i>/<u>, pas des <span style>.
+        // Les styles en ligne ne survivraient pas a l'assainissement, et la
+        // mise en forme disparaitrait a l'enregistrement sans rien dire.
+        document.execCommand('styleWithCSS', false, false);
+        document.execCommand(cmd, false, null);
+      } catch (e) {
+        console.warn('[ui] commande de mise en forme refusée :', cmd, e);
+      }
+      signaler();
+    }
+
+    COMMANDES_RICHES.forEach(function (c) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'riche-btn ' + (c.classe || '');
+      b.textContent = c.libelle;
+      b.title = c.titre;
+      // mousedown plutot que click : au moment du click, le champ a deja perdu
+      // le focus et la selection avec lui — la commande ne s'appliquerait a rien.
+      b.onmousedown = function (e) { e.preventDefault(); commander(c.cmd); };
+      barre.appendChild(b);
+    });
+
+    zone.addEventListener('input', signaler);
+    zone.addEventListener('blur', signaler);
+
+    // Un collage depuis Word ou un navigateur charrie des tableaux, des
+    // polices et des styles absolus. On ne garde que le texte : c'est la seule
+    // maniere de rester previsible, et l'assainissement le ferait de toute
+    // facon, mais apres coup et sous les yeux de l'utilisateur.
+    zone.addEventListener('paste', function (e) {
+      e.preventDefault();
+      var texte = (e.clipboardData || window.clipboardData).getData('text/plain');
+      document.execCommand('insertText', false, texte);
+    });
+
+    wrap.appendChild(boite);
+
+    if (opts.aide) {
+      var a = document.createElement('div');
+      a.className = 'aide';
+      a.textContent = opts.aide;
+      wrap.appendChild(a);
+    }
+
+    majPlaceholder();
+
+    wrap.zone = zone;
+    wrap.input = zone;
     return wrap;
   };
 

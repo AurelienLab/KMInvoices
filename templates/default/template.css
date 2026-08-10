@@ -297,6 +297,20 @@
   justify-content: center;
 }
 
+/* Le substitut porte deja son propre cadre pointille : lui en ajouter un
+   second donnerait un cadre dans un cadre. */
+.doc-root .lig-img-vide,
+.doc-root .fiche-img-vide {
+  border: 0;
+  background: none;
+  padding: 0;
+}
+
+/* Il occupe la place d'une photo sans en prendre le poids visuel : c'est une
+   absence signalee, pas un element a regarder. */
+.doc-root .lig-img-vide img,
+.doc-root .fiche-img-vide img { opacity: .55; }
+
 /* contain : on ne recadre jamais une machine. */
 .doc-root .lig-img img {
   max-width: 100%;
@@ -337,11 +351,57 @@
 .doc-root .c-tva { color: var(--encre-douce); font-size: var(--corps-petit); }
 
 /* Attributs : chiffres alignes a droite comme les montants, mais sans le poids
-   typographique — ce sont des caracteristiques, pas des sommes a payer. */
-.doc-root .c-attr {
+   typographique — ce sont des caracteristiques, pas des sommes a payer.
+
+   Le nowrap ne vaut QUE pour les valeurs : « 5 kW » coupe entre le nombre et
+   son unite ne veut plus rien dire. Un en-tete, lui, doit pouvoir se replier —
+   voir la regle suivante. */
+.doc-root td.c-attr {
   font-family: var(--police-chiffres);
   font-size: var(--corps-petit);
   white-space: nowrap;
+}
+
+/* En-tetes de colonnes d'attributs.
+
+   Ce sont des noms libres — « Encombrement au sol », « Puissance nominale » —
+   dans une colonne de 20 mm. Sans retour a la ligne, ils debordent sur leurs
+   voisins et les titres se chevauchent. On autorise donc le repli, y compris
+   AU MILIEU d'un mot trop long pour la colonne : mieux vaut une cesure qu'un
+   mot qui passe par-dessus la colonne d'a cote. */
+.doc-root th.c-attr {
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  hyphens: auto;
+  letter-spacing: .02em;
+  line-height: 1.2;
+}
+
+/* Ligne de cumuls, en bas des colonnes de caracteristiques. */
+.doc-root .doc-ligne-totaux td {
+  border-top: var(--filet-fort) solid var(--accent);
+  border-bottom: 0;
+  padding-top: 2mm;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.doc-root .doc-ligne-totaux td.c-des {
+  font-size: var(--corps-micro);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--encre-douce);
+  font-weight: 700;
+}
+
+/* Renvoi vers la fiche annexee. */
+.doc-root .lig-lien {
+  display: inline-block;
+  margin-top: .6mm;
+  font-size: var(--corps-micro);
+  color: var(--accent);
+  text-decoration: underline;
 }
 
 /* ==========================================================================
@@ -451,7 +511,11 @@
 
 .doc-root .tot-remise .tot-v { color: var(--accent); }
 
-.doc-root .tot-ttc {
+/* Ligne mise en avant du pied de document : le TOTAL HT.
+
+   Sur une offre entre professionnels, c'est le chiffre qui compte — celui qui
+   se compare et qui entre au budget. Le TTC suit, en ligne ordinaire. */
+.doc-root .tot-fort {
   margin-top: .8mm;
   padding: 2.6mm 3mm;
   background: var(--accent);
@@ -459,7 +523,7 @@
   border-radius: var(--rayon);
 }
 
-.doc-root .tot-ttc .tot-k {
+.doc-root .tot-fort .tot-k {
   color: var(--papier);
   font-weight: 700;
   letter-spacing: .04em;
@@ -468,11 +532,16 @@
   align-self: center;
 }
 
-.doc-root .tot-ttc .tot-v {
+.doc-root .tot-fort .tot-v {
   color: var(--papier);
   font-size: 13pt;
   font-weight: 700;
 }
+
+/* Le TTC garde un peu de poids : il ferme le decompte, il ne le domine plus. */
+.doc-root .tot-ttc { margin-top: .8mm; }
+.doc-root .tot-ttc .tot-k { color: var(--encre); font-weight: 600; }
+.doc-root .tot-ttc .tot-v { font-weight: 700; }
 
 .doc-root .tot-acompte { margin-top: 2mm; border-top: var(--filet-fin) solid var(--filet-couleur); }
 .doc-root .tot-reste .tot-v { font-weight: 700; }
@@ -505,6 +574,149 @@
   font-size: var(--corps-petit);
   font-style: italic;
   color: var(--encre);
+}
+
+/* ==========================================================================
+   Fiches produit annexees
+
+   Une par machine, chacune sur sa propre feuille. Le saut est force par
+   break-before sur le bloc, pas par une hauteur imposee : une fiche courte ne
+   doit pas fabriquer une page a moitie vide suivie d'une page blanche.
+   ========================================================================== */
+
+.doc-root .doc-fiche {
+  break-before: page;
+  page-break-before: always;
+  padding-top: 2mm;
+}
+
+.doc-root .fiche-tete {
+  padding-bottom: 2.5mm;
+  border-bottom: var(--filet-accent) solid var(--accent);
+}
+
+.doc-root .fiche-numero {
+  font-size: var(--corps-micro);
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--encre-douce);
+}
+
+.doc-root .fiche-ref {
+  font-family: var(--police-chiffres);
+  font-size: var(--corps-petit);
+  letter-spacing: .06em;
+  color: var(--encre-douce);
+  margin-top: .8mm;
+}
+
+.doc-root .fiche-titre {
+  font-family: var(--police-titre);
+  font-size: 15pt;
+  font-weight: 700;
+  line-height: 1.15;
+  margin: .8mm 0 0;
+  color: var(--accent);
+}
+
+.doc-root .fiche-corps {
+  display: flex;
+  gap: 7mm;
+  align-items: flex-start;
+  margin-top: 5mm;
+}
+
+/* La photo prend la moitie gauche : c'est une fiche produit, l'image y est
+   l'argument principal, pas une vignette de rappel. */
+.doc-root .fiche-img {
+  flex: 0 0 78mm;
+  margin: 0;
+  padding: 3mm;
+  border: var(--filet-fin) solid var(--filet-couleur);
+  border-radius: var(--rayon);
+  background: #fbfcfd;
+  text-align: center;
+}
+
+.doc-root .fiche-img img {
+  max-width: 100%;
+  max-height: 95mm;
+  object-fit: contain;
+  display: block;
+  margin: 0 auto;
+}
+
+/* Sans photo, la fiche garde la meme colonne : deux fiches cote a cote dans
+   un meme document doivent s'aligner, qu'elles portent une image ou non. */
+.doc-root .fiche-img-vide img { max-height: 70mm; }
+
+.doc-root .fiche-detail { flex: 1 1 auto; min-width: 0; }
+
+.doc-root .fiche-desc { margin-bottom: 4mm; }
+
+/* La description vient d'un editeur : sa mise en forme doit s'aligner sur la
+   typographie du document, pas sur celle du navigateur. */
+.doc-root .fiche-desc p { margin: 0 0 2mm; }
+.doc-root .fiche-desc ul,
+.doc-root .fiche-desc ol { margin: 0 0 2mm; padding-left: 5mm; }
+.doc-root .fiche-desc li { margin: .5mm 0; }
+
+.doc-root .fiche-attrs {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 4mm;
+}
+
+.doc-root .fiche-attrs th {
+  text-align: left;
+  font-weight: 400;
+  color: var(--encre-douce);
+  font-size: var(--corps-petit);
+  padding: 1.4mm 2mm 1.4mm 0;
+  border-bottom: var(--filet-fin) solid var(--filet-couleur);
+  /* Meme raison qu'en tete de colonne : un nom libre doit pouvoir se replier. */
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.doc-root .fiche-attrs td {
+  text-align: right;
+  font-family: var(--police-chiffres);
+  font-weight: 600;
+  padding: 1.4mm 0;
+  border-bottom: var(--filet-fin) solid var(--filet-couleur);
+  white-space: nowrap;
+}
+
+.doc-root .fiche-prix {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 4mm;
+  padding: 2.4mm 3mm;
+  background: var(--accent-clair);
+  border-left: var(--filet-fort) solid var(--accent);
+  border-radius: 0 var(--rayon) var(--rayon) 0;
+}
+
+.doc-root .fiche-prix-k {
+  font-size: var(--corps-petit);
+  color: var(--encre-douce);
+}
+
+.doc-root .fiche-prix-v {
+  font-family: var(--police-chiffres);
+  font-size: 12pt;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.doc-root .fiche-tva {
+  margin-top: 1.2mm;
+  font-size: var(--corps-micro);
+  color: var(--encre-douce);
+  text-align: right;
 }
 
 /* ==========================================================================
@@ -572,5 +784,27 @@
   .doc-root .doc-tva {
     break-inside: avoid;
     page-break-inside: avoid;
+  }
+
+  /* Le titre d'une fiche ne doit jamais rester seul en bas d'une feuille,
+     ni son prix partir seul sur la suivante. La fiche entiere, elle, peut se
+     couper : une description longue a le droit de deborder sur deux pages. */
+  .doc-root .fiche-tete,
+  .doc-root .fiche-img,
+  .doc-root .fiche-prix,
+  .doc-root .fiche-attrs tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}
+
+/* A l'ecran, l'apercu est une bande continue : rien ne marque le saut de page
+   que l'impression produira. Ce filet le rend visible, et disparait au
+   moment ou il devient reel. */
+@media screen {
+  .doc-root .doc-fiche {
+    margin-top: 8mm;
+    padding-top: 6mm;
+    border-top: 0.6mm dashed var(--filet-couleur);
   }
 }

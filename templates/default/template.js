@@ -34,6 +34,52 @@
     return parent;
   }
 
+  /*
+   * Substitut de photo, pour une machine dont la fiche n'en porte pas.
+   *
+   * EMBARQUE, pas telecharge. Un placehold.net ou n'importe quelle autre URL
+   * distante ne tiendrait aucune des contraintes de cet outil : il tourne en
+   * file://, souvent sans reseau, et « aucune donnee ne quitte ce poste » est
+   * sa raison d'etre — une requete par ligne sans photo trahirait a un tiers
+   * qu'une proposition vient d'etre editee. Surtout, l'impression n'attend
+   * pas : une image distante encore en vol au moment du window.print() sort
+   * en cadre vide dans le PDF, c'est-a-dire exactement le probleme qu'on
+   * cherchait a corriger.
+   *
+   * Un SVG en data: n'a aucun de ces defauts : il est la, il est net a toutes
+   * les tailles, et il pese moins qu'une seule requete HTTP.
+   */
+  var PHOTO_ABSENTE = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600">' +
+      '<rect width="600" height="600" fill="#f7f9fa"/>' +
+      '<rect x="20" y="20" width="560" height="560" rx="18" fill="none" ' +
+        'stroke="#d4dade" stroke-width="4" stroke-dasharray="18 14"/>' +
+      '<g fill="none" stroke="#b6c0c9" stroke-width="14" ' +
+        'stroke-linecap="round" stroke-linejoin="round">' +
+        '<rect x="170" y="200" width="260" height="200" rx="16"/>' +
+        '<circle cx="232" cy="262" r="22"/>' +
+        '<path d="M182 372l72-72 58 58 40-36 66 62"/>' +
+      '</g>' +
+    '</svg>'
+  );
+
+  /**
+   * Cadre photo d'une machine, ou son substitut.
+   * @param {object} source     porte .imageUrl et .sansPhoto
+   * @param {string} className  classe du cadre
+   * @returns {HTMLElement|null} null quand la photo a ete decochee
+   */
+  function cadrePhoto(source, className) {
+    if (!source.imageUrl && !source.sansPhoto) return null;
+
+    var fig = el('div', className + (source.sansPhoto ? ' ' + className + '-vide' : ''));
+    var img = el('img');
+    img.src = source.imageUrl || PHOTO_ABSENTE;
+    img.alt = source.imageUrl ? source.titre : 'Photo non disponible';
+    add(fig, img);
+    return fig;
+  }
+
   /** Bloc de lignes de texte (adresse, mentions). Renvoie null si vide. */
   function lignesBloc(tag, className, lignes) {
     if (!lignes || !lignes.length) return null;
@@ -132,32 +178,40 @@
       el('th', 'c-qte', 'Qté'),
       el('th', 'c-pu', 'P.U. HT'),
       m.afficherRemise ? el('th', 'c-rem', 'Remise') : null,
-      el('th', 'c-tva', 'TVA'),
+      m.afficherTVA ? el('th', 'c-tva', 'TVA') : null,
       el('th', 'c-tot', 'Total HT')
     );
     add(thead, tr);
     add(table, thead);
 
+    /*
+     * Cellule de designation : PHOTO, REFERENCE ET TITRE.
+     *
+     * Pas de description ici : une cellule qui porte un paragraphe fait une
+     * ligne haute de plusieurs centimetres, et la colonne des montants — la
+     * seule que le lecteur cherche — se retrouve noyee. La photo, elle, reste :
+     * elle identifie la machine d'un coup d'oeil sans couter une ligne de
+     * hauteur. Le detail part en annexe, chaque ligne y renvoie par un lien.
+     */
     var tbody = el('tbody');
     m.lignes.forEach(function (l) {
       var row = el('tr', 'doc-ligne');
 
       var des = el('td', 'c-des');
       var desWrap = el('div', 'lig-wrap');
-
-      if (l.imageUrl) {
-        var fig = el('div', 'lig-img');
-        var img = el('img');
-        img.src = l.imageUrl;
-        img.alt = l.titre;
-        add(fig, img);
-        add(desWrap, fig);
-      }
+      add(desWrap, cadrePhoto(l, 'lig-img'));
 
       var txt = el('div', 'lig-txt');
       if (l.reference) add(txt, el('div', 'lig-ref', l.reference));
       add(txt, el('div', 'lig-titre', l.titre));
-      add(txt, lignesBloc('div', 'lig-desc', l.descriptionLignes));
+
+      if (l.ficheAncre) {
+        // Ancre interne : Chromium la convertit en lien cliquable dans le PDF.
+        var lien = el('a', 'lig-lien', 'Voir la fiche ' + l.ficheNumero);
+        lien.setAttribute('href', '#' + l.ficheAncre);
+        add(txt, lien);
+      }
+
       add(desWrap, txt);
       add(des, desWrap);
 
@@ -173,11 +227,36 @@
         qte,
         el('td', 'c-pu', l.prixUnitaireTexte),
         m.afficherRemise ? el('td', 'c-rem', l.remiseTexte || '—') : null,
-        el('td', 'c-tva', l.tauxTVATexte),
+        m.afficherTVA ? el('td', 'c-tva', l.tauxTVATexte) : null,
         el('td', 'c-tot', l.totalHTTexte)
       );
       add(tbody, row);
     });
+
+    /*
+     * Cumuls des caracteristiques, EN BAS DE LEUR PROPRE COLONNE.
+     *
+     * C'est la seule position ou le total se lit sans avoir a rechercher de
+     * quelle caracteristique il parle : il est sous elle. Volontairement dans
+     * le <tbody> et non dans un <tfoot> — un tfoot se repeterait en bas de
+     * chaque feuille, et un cumul partiel repete trois fois se lirait comme
+     * trois valeurs contradictoires.
+     */
+    if (m.afficherTotauxColonnes) {
+      var totaux = el('tr', 'doc-ligne-totaux');
+      add(totaux, el('td', 'c-des', 'Total de l\'ensemble'));
+      m.colonnes.forEach(function (c) {
+        add(totaux, el('td', 'c-attr', c.totalTexte || ''));
+      });
+      // Les colonnes chiffrees restent vides : la synthese financiere plus bas
+      // est le seul endroit ou les montants se totalisent. Le colspan suit les
+      // colonnes reellement emises — qte, P.U., total, plus les optionnelles.
+      var reste = el('td', 'c-reste');
+      reste.colSpan = 3 + (m.afficherRemise ? 1 : 0) + (m.afficherTVA ? 1 : 0);
+      add(totaux, reste);
+      add(tbody, totaux);
+    }
+
     add(table, tbody);
 
     return table;
@@ -245,7 +324,15 @@
         'Remise globale' + (t.remiseGlobalePctTexte ? ' (' + t.remiseGlobalePctTexte + ')' : ''),
         t.remiseGlobaleTexte, 'tot-remise'));
     }
-    add(bloc, ligne('Total HT', t.totalHTTexte));
+    /*
+     * C'est le TOTAL HT qui est mis en avant, pas le TTC.
+     *
+     * Le document s'adresse a des professionnels qui recuperent la TVA : le
+     * chiffre qu'ils comparent d'une offre a l'autre, celui qui entre dans
+     * leur budget, c'est le HT. Le TTC reste imprime juste en dessous — il
+     * n'est pas cache, il n'est simplement plus le chiffre du document.
+     */
+    add(bloc, ligne('Total HT', t.totalHTEurosTexte, 'tot-fort'));
     add(bloc, ligne('Total TVA', t.totalTVATexte));
     add(bloc, ligne('Total TTC', t.totalTTCTexte, 'tot-ttc'));
 
@@ -283,6 +370,77 @@
     if (m.societe.mentionTVA) {
       add(bloc, el('div', 'doc-mention-tva', m.societe.mentionTVA));
     }
+    return bloc;
+  }
+
+  /**
+   * Fiches produit annexees, une page par machine.
+   *
+   * Elles reprennent ce que le tableau ne porte plus : photo, description
+   * mise en forme, caracteristiques completes, prix unitaire. Chacune debute
+   * sur une nouvelle feuille — une fiche coupee en deux ne se lit pas — et
+   * porte l'ancre visee par le lien de la ligne correspondante.
+   */
+  function renderFiches(m) {
+    if (!m.fiches || !m.fiches.length) return null;
+
+    var bloc = el('section', 'doc-fiches');
+
+    m.fiches.forEach(function (f) {
+      var fiche = el('article', 'doc-fiche');
+      fiche.id = f.ancre;
+
+      var tete = el('header', 'fiche-tete');
+      add(tete, el('div', 'fiche-numero', 'Fiche ' + f.numero));
+      if (f.reference) add(tete, el('div', 'fiche-ref', f.reference));
+      add(tete, el('h2', 'fiche-titre', f.titre));
+      add(fiche, tete);
+
+      var corps = el('div', 'fiche-corps');
+      add(corps, cadrePhoto(f, 'fiche-img'));
+
+      var detail = el('div', 'fiche-detail');
+
+      if (f.descriptionHtml) {
+        var d = el('div', 'fiche-desc');
+        /*
+         * Seule injection de HTML de tout le template.
+         *
+         * La valeur sort de App.schema.normalize, qui la reconstruit balise
+         * par balise sur une liste blanche et sans aucun attribut : il n'y a
+         * pas de chemin par lequel un `.devis` recu d'un tiers puisse faire
+         * arriver ici autre chose que du texte mis en gras ou en liste.
+         */
+        d.innerHTML = f.descriptionHtml;
+        add(detail, d);
+      }
+
+      if (f.attributs.length) {
+        var t = el('table', 'fiche-attrs');
+        var tb = el('tbody');
+        f.attributs.forEach(function (a) {
+          var tr = el('tr');
+          add(tr, el('th', null, a.nom), el('td', null, a.valeurTexte));
+          add(tb, tr);
+        });
+        add(t, tb);
+        add(detail, t);
+      }
+
+      var prix = el('div', 'fiche-prix');
+      add(prix,
+        el('span', 'fiche-prix-k', 'Prix unitaire HT'),
+        el('span', 'fiche-prix-v', f.prixUnitaireTexte +
+          (f.unite ? ' / ' + f.unite : ''))
+      );
+      add(detail, prix);
+      add(detail, el('div', 'fiche-tva', 'TVA ' + f.tauxTVATexte));
+
+      add(corps, detail);
+      add(fiche, corps);
+      add(bloc, fiche);
+    });
+
     return bloc;
   }
 
@@ -349,7 +507,11 @@
         renderLignes(model),
         renderTotauxAttributs(model),
         renderSynthese(model),
-        renderConditions(model)
+        renderConditions(model),
+        // Les fiches ferment le document : elles sont une annexe, jamais un
+        // preambule. Elles restent dans la meme cellule que le reste pour
+        // continuer de beneficier du pied de page repete par le <tfoot>.
+        renderFiches(model)
       );
       add(trCorps, tdCorps);
       add(corps, trCorps);

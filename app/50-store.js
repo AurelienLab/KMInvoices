@@ -35,8 +35,17 @@
 
   // --- Abonnement ----------------------------------------------------------
 
+  /*
+   * Itere sur une COPIE de la liste.
+   *
+   * Un abonne a parfaitement le droit de remonter une vue en reaction — la
+   * coquille le fait sur « ouverture » — et une vue qui se monte peut
+   * s'abonner ou se desabonner. Muter le tableau pendant son propre forEach
+   * decale les indices restants : un abonne serait purement saute, et le bug
+   * ne se verrait que sur celui qui se trouve juste apres.
+   */
   function notifier(raison) {
-    abonnes.forEach(function (cb) {
+    abonnes.slice().forEach(function (cb) {
       try { cb(state, raison); } catch (e) { console.error('[store] abonné en erreur', e); }
     });
   }

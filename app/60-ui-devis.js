@@ -95,6 +95,16 @@
   /** Appele depuis le repertoire : « Nouveau devis » sur une fiche client. */
   UI.creerDevisPour = creerDevis;
 
+  /**
+   * Ouvre un devis dans l'editeur. Appele depuis le tableau de bord.
+   * `etat.devisId` reste prive : une vue exterieure ne doit pas pouvoir mettre
+   * l'editeur dans un etat que lui seul sait construire.
+   */
+  UI.ouvrirDevis = function (id) {
+    etat.devisId = id;
+    UI.ouvrirVue('devis');
+  };
+
   function dupliquerDevis(source) {
     var data = App.store.get();
     var copie = JSON.parse(JSON.stringify(source));
@@ -644,6 +654,7 @@
     // --- Vignette ---
     var vignette = document.createElement('div');
     vignette.className = 'lig-vignette' + (ligne.imageFile ? '' : ' vide');
+
     if (ligne.imageFile) {
       App.store.urlImage(ligne.imageFile).then(function (url) {
         if (!url) return;
@@ -651,21 +662,39 @@
         img.src = url;
         vignette.appendChild(img);
       });
-      var bascule = document.createElement('label');
-      bascule.className = 'lig-img-bascule';
-      bascule.title = 'Afficher cette photo sur le devis imprimé';
-      var caseImg = document.createElement('input');
-      caseImg.type = 'checkbox';
-      caseImg.checked = ligne.afficherImage !== false;
-      caseImg.onchange = function () {
-        majDevis(function (d) {
-          var l = d.lignes.filter(function (x) { return x.id === ligne.id; })[0];
-          if (l) l.afficherImage = caseImg.checked;
-        });
-      };
-      bascule.appendChild(caseImg);
-      vignette.appendChild(bascule);
+    } else {
+      var mention = document.createElement('span');
+      mention.className = 'lig-vignette-vide';
+      mention.textContent = 'sans photo';
+      vignette.appendChild(mention);
     }
+
+    /*
+     * La bascule est la MEME QUE LA LIGNE PORTE UNE PHOTO OU NON.
+     *
+     * Depuis qu'une ligne sans photo imprime un cadre de substitution, la
+     * masquer sur ces lignes-la retirait le seul moyen de refuser ce cadre :
+     * une ligne « Livraison » se retrouvait avec un encadre « photo non
+     * disponible » que rien ne permettait d'enlever.
+     */
+    var bascule = document.createElement('label');
+    bascule.className = 'lig-img-bascule';
+    bascule.title = ligne.imageFile
+      ? 'Afficher cette photo sur le document'
+      : 'Aucune photo sur cette ligne : cocher réserve tout de même son ' +
+        'emplacement sur le document, décocher n\'imprime rien.';
+    var caseImg = document.createElement('input');
+    caseImg.type = 'checkbox';
+    caseImg.checked = ligne.afficherImage !== false;
+    caseImg.onchange = function () {
+      majDevis(function (d) {
+        var l = d.lignes.filter(function (x) { return x.id === ligne.id; })[0];
+        if (l) l.afficherImage = caseImg.checked;
+      });
+    };
+    bascule.appendChild(caseImg);
+    vignette.appendChild(bascule);
+
     row.appendChild(vignette);
 
     // --- Designation ---
@@ -716,17 +745,21 @@
     titre.placeholder = 'Désignation';
     des.appendChild(titre);
 
-    var desc = document.createElement('textarea');
-    desc.className = 'lig-desc-champ';
-    desc.rows = 2;
-    desc.placeholder = 'Description (facultative)';
-    desc.value = ligne.description || '';
-    desc.oninput = function () {
-      majDevis(function (d) {
-        var l = d.lignes.filter(function (x) { return x.id === ligne.id; })[0];
-        if (l) l.description = desc.value;
-      });
-    };
+    // La description ne s'imprime plus dans le tableau : elle alimente la
+    // fiche produit annexee. Meme editeur qu'au catalogue, sinon ouvrir une
+    // ligne pour la corriger en aplatirait la mise en forme.
+    var desc = UI.champRiche({
+      compact: true,
+      valeur: ligne.description,
+      placeholder: 'Description (reprise sur la fiche annexée)',
+      onchange: function (v) {
+        majDevis(function (d) {
+          var l = d.lignes.filter(function (x) { return x.id === ligne.id; })[0];
+          if (l) l.description = v;
+        });
+      }
+    });
+    desc.classList.add('lig-desc-champ');
     des.appendChild(desc);
     row.appendChild(des);
 
@@ -1032,7 +1065,10 @@
       ligne('Remise ' + App.format.pourcent(r.remiseGlobalePct),
             '- ' + App.format.euros(r.remiseGlobaleCents), 'tot-remise');
     }
-    ligne('Total HT', App.format.euros(r.totalHTCents));
+    // Meme hierarchie que le document imprime : le HT en vedette, le TTC en
+    // ligne ordinaire. L'editeur ne doit pas mettre en avant un autre chiffre
+    // que celui que le client verra.
+    ligne('Total HT', App.format.euros(r.totalHTCents), 'tot-fort');
 
     r.recapTVA.forEach(function (t) {
       ligne('TVA ' + App.format.pourcent(t.taux) +

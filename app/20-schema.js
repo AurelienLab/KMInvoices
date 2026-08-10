@@ -127,6 +127,155 @@
     });
   };
 
+  // --- Texte riche ---------------------------------------------------------
+
+  /*
+   * Les descriptions de produit sont saisies dans un petit editeur WYSIWYG et
+   * stockees en HTML. Ce HTML finit injecte par innerHTML dans le document
+   * imprimable : il ne peut donc JAMAIS etre fait confiance a la source.
+   *
+   * S.assainirHtml ne filtre pas, il RECONSTRUIT : il retokenise l'entree,
+   * ne reemet que des balises de la liste blanche, SANS AUCUN ATTRIBUT, et
+   * reechappe tout le texte. La sortie est donc du markup que ce fichier a
+   * ecrit lui-meme — aucun `onclick`, aucun `style`, aucun `href` ne peut
+   * survivre au passage, quelle que soit l'ingeniosite de l'entree.
+   *
+   * Volontairement sans DOM : ce fichier reste testable sans navigateur, et
+   * la sanitisation ne depend pas de la maniere dont un parseur particulier
+   * interprete un fragment malforme.
+   */
+
+  var BALISES_RICHES = {
+    b: 1, strong: 1, i: 1, em: 1, u: 1, s: 1,
+    br: 1, p: 1, div: 1, ul: 1, ol: 1, li: 1
+  };
+
+  // Balises dont le CONTENU doit disparaitre avec elles : garder le texte d'un
+  // <script> reviendrait a recracher le payload en clair dans le document.
+  //
+  // Ouverture stricte, fermeture permissive : ouvrir large ferait disparaitre
+  // « il faut < script minutes » jusqu'a la fin du texte, alors que fermer
+  // large ne peut que sortir plus tot d'une zone deja condamnee.
+  var BALISES_TOXIQUES = /<(script|style|iframe|object|embed|svg|math|template|noscript)\b[\s\S]*?(?:<\s*\/\s*\1\s*>|$)/gi;
+
+  var BALISES_VIDES = { br: 1 };
+
+  /** Echappe un texte brut destine a du HTML. */
+  S.echapperHtml = function (texte) {
+    return String(texte == null ? '' : texte)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  };
+
+  /**
+   * Reconstruit un fragment HTML sur : liste blanche de balises, zero
+   * attribut, texte reechappe, balises rouvertes/refermees proprement.
+   */
+  S.assainirHtml = function (html) {
+    var src = String(html == null ? '' : html)
+      .replace(BALISES_TOXIQUES, '')
+      .replace(/<!--[\s\S]*?-->/g, '');
+
+    var sortie = [];
+    var pile = [];
+
+    /*
+     * Une balise, c'est « < » COLLE a une lettre — ou « </ » colle a une
+     * lettre. La norme HTML est stricte la-dessus, et il faut l'etre autant :
+     * tolerer une espace ferait lire « a < b & c > d » comme une balise <b>,
+     * et le texte de l'utilisateur disparaitrait dans un gras fantome.
+     */
+    var re = /<(\/?)([a-zA-Z][a-zA-Z0-9]*)\b[^>]*>/g;
+    var pos = 0;
+    var m;
+
+    // Une entite deja formee (&nbsp;, &#233;) doit passer telle quelle :
+    // reechapper son « & » l'afficherait en clair dans le document.
+    function texte(t) {
+      if (!t) return;
+      sortie.push(
+        t.replace(/&(?!#?[a-zA-Z0-9]+;)/g, '&amp;')
+         .replace(/</g, '&lt;')
+         .replace(/>/g, '&gt;')
+      );
+    }
+
+    while ((m = re.exec(src)) !== null) {
+      texte(src.slice(pos, m.index));
+      pos = re.lastIndex;
+
+      var fermante = m[1] === '/';
+      var nom = m[2].toLowerCase();
+      if (!BALISES_RICHES[nom]) continue;          // balise inconnue : effacee
+
+      if (BALISES_VIDES[nom]) {
+        if (!fermante) sortie.push('<' + nom + '>');
+        continue;
+      }
+
+      if (!fermante) {
+        sortie.push('<' + nom + '>');
+        pile.push(nom);
+        continue;
+      }
+
+      // Fermeture : sans ouverture correspondante, elle est orpheline et on
+      // l'ignore — la reemettre produirait un fragment desequilibre.
+      var i = pile.lastIndexOf(nom);
+      if (i === -1) continue;
+      for (var j = pile.length - 1; j >= i; j--) sortie.push('</' + pile[j] + '>');
+      pile.length = i;
+    }
+    texte(src.slice(pos));
+
+    for (var k = pile.length - 1; k >= 0; k--) sortie.push('</' + pile[k] + '>');
+
+    return sortie.join('');
+  };
+
+  /** Texte brut multiligne -> HTML equivalent. Migration des anciennes fiches. */
+  S.htmlDepuisTexte = function (texte) {
+    var t = String(texte == null ? '' : texte);
+    if (!t.trim()) return '';
+    return t.split(/\r?\n/).map(S.echapperHtml).join('<br>');
+  };
+
+  /**
+   * HTML -> texte brut lisible. Sert partout ou du markup n'a pas sa place :
+   * apercu d'une fiche dans la liste du catalogue, recherche plein texte.
+   */
+  S.htmlVersTexte = function (html) {
+    return String(html == null ? '' : html)
+      .replace(/<\s*br\s*\/?\s*>/gi, '\n')
+      .replace(/<\s*\/\s*(p|div|li|ul|ol)\s*>/gi, '\n')
+      .replace(/<[^>]*>/g, '')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&lt;/gi, '<')
+      .replace(/&gt;/gi, '>')
+      .replace(/&quot;/gi, '"')
+      .replace(/&#0*39;|&apos;/gi, '\'')
+      .replace(/&amp;/gi, '&')          // en dernier : sinon &amp;lt; -> <
+      .replace(/[ \t]+\n/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  };
+
+  /**
+   * Forme canonique d'une description, quelle que soit son origine.
+   *
+   * Un fichier anterieur au WYSIWYG porte du texte brut dont les retours a la
+   * ligne sont la seule mise en forme : on les convertit une fois pour toutes.
+   * Un fragment qui ne contient plus aucun texte devient la chaine vide, pour
+   * que le document n'imprime pas un bloc de description vide.
+   */
+  S.normaliserDescription = function (valeur) {
+    var v = String(valeur == null ? '' : valeur);
+    if (!v) return '';
+    var html = /<[a-zA-Z][^>]*>/.test(v) ? S.assainirHtml(v) : S.htmlDepuisTexte(v);
+    return S.htmlVersTexte(html) ? html : '';
+  };
+
   // --- Attributs personnalises ---------------------------------------------
 
   /**
@@ -203,6 +352,27 @@
       });
     });
     return Object.keys(vus).sort(function (a, b) { return a.localeCompare(b, 'fr'); });
+  };
+
+  /**
+   * Unite la plus souvent employee dans le catalogue pour un nom d'attribut.
+   *
+   * Sert a pre-remplir l'unite quand on choisit une caracteristique deja
+   * existante : « Puissance » a ete saisie dix fois en kW, la onzieme n'a
+   * aucune raison de repartir a vide. Ne renvoie rien si le nom n'a jamais
+   * porte d'unite.
+   */
+  S.uniteHabituelle = function (data, nom) {
+    var comptes = Object.create(null);
+    ((data && data.catalogue) || []).forEach(function (p) {
+      (p.attributs || []).forEach(function (a) {
+        if (!a || a.nom !== nom || !a.unite) return;
+        comptes[a.unite] = (comptes[a.unite] || 0) + 1;
+      });
+    });
+    return Object.keys(comptes).sort(function (a, b) {
+      return comptes[b] - comptes[a] || a.localeCompare(b, 'fr');
+    })[0] || '';
   };
 
   /** Noms d'attributs presents sur les lignes d'un devis, dans l'ordre d'apparition. */
@@ -430,9 +600,14 @@
       clients: (data.clients || []).map(function (c) {
         return Object.assign(S.nouveauClient(), c, { id: c.id || App.uid() });
       }),
+      // La description passe par normaliserDescription A CHAQUE ouverture :
+      // c'est le seul point de passage obligatoire de toute donnee entrante,
+      // donc le bon endroit pour que le HTML d'un fichier venu d'ailleurs soit
+      // assaini avant d'atteindre le moindre innerHTML.
       catalogue: (data.catalogue || []).map(function (p) {
         return Object.assign(S.nouveauProduit(), p, {
           id: p.id || App.uid(),
+          description: S.normaliserDescription(p.description),
           attributs: S.normaliserAttributs(p.attributs)
         });
       }),
@@ -447,6 +622,7 @@
           if (ll.afficherImage === undefined) ll.afficherImage = !!ll.imageFile;
           if (ll.quantite === undefined) ll.quantite = 1;
           if (ll.remisePct === undefined) ll.remisePct = 0;
+          ll.description = S.normaliserDescription(ll.description);
           ll.attributs = S.normaliserAttributs(ll.attributs);
           return ll;
         });

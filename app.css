@@ -446,6 +446,81 @@ textarea { resize: vertical; min-height: 74px; line-height: 1.45; }
   min-height: 14px;
 }
 
+/* ==========================================================================
+   Champ de texte mis en forme (UI.champRiche)
+
+   Doit ressembler a un textarea, sinon on ne comprend pas qu'on peut y ecrire.
+   La barre d'outils est posee dessus, dans le meme cadre, pour que le tout se
+   lise comme un seul controle.
+   ========================================================================== */
+
+.riche {
+  border: 1px solid var(--ui-bord-fort);
+  border-radius: var(--ui-rayon);
+  background: var(--ui-surface);
+  overflow: hidden;
+}
+
+.riche:focus-within {
+  border-color: var(--ui-accent-vif);
+  box-shadow: 0 0 0 3px rgba(29,100,145,.14);
+}
+
+.riche-barre {
+  display: flex;
+  gap: 2px;
+  padding: 4px 5px;
+  border-bottom: 1px solid var(--ui-bord);
+  background: #fafbfc;
+}
+
+/* En mode compact — une ligne de devis — la barre ne se montre qu'au focus :
+   six boutons par ligne satureraient le tableau. */
+.riche-compact .riche-barre { display: none; }
+.riche-compact:focus-within .riche-barre { display: flex; }
+
+.riche-btn {
+  min-width: 26px;
+  padding: 3px 6px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: none;
+  color: var(--ui-encre-douce);
+  font-size: 13px;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.riche-btn:hover {
+  background: var(--ui-accent-pale);
+  border-color: var(--ui-bord);
+  color: var(--ui-accent);
+}
+
+.riche-b { font-weight: 700; }
+.riche-i { font-style: italic; }
+.riche-u { text-decoration: underline; }
+
+.riche-zone {
+  padding: 8px 10px;
+  min-height: 74px;
+  line-height: 1.45;
+  outline: none;
+  overflow-wrap: break-word;
+}
+
+.riche-zone:empty::before,
+.riche-zone.vide::before {
+  content: attr(data-vide);
+  color: var(--ui-encre-faible);
+  pointer-events: none;
+}
+
+/* Le contenu doit se lire comme il s'imprimera, marges de listes comprises. */
+.riche-zone ul, .riche-zone ol { margin: 0 0 0 18px; padding: 0; }
+.riche-zone li { margin: 1px 0; }
+.riche-zone p { margin: 0 0 6px; }
+
 input.invalide, textarea.invalide {
   border-color: #f97066;
   background: #fffbfa;
@@ -485,6 +560,11 @@ input.invalide, textarea.invalide {
 }
 
 .attr-champ { width: 100%; }
+
+/* Cellule « nom » : le <select> des caracteristiques deja creees, et sous lui
+   la saisie libre, visible seulement quand on choisit d'en creer une. */
+.attr-nom { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.attr-nom-select { text-overflow: ellipsis; }
 
 /* Une case a cocher desactivee doit se voir desactivee : sans cela, on croit
    avoir coche et rien ne se passe sur le document. */
@@ -911,6 +991,16 @@ button.lien {
 .lig-vignette.vide { border-style: dashed; }
 .lig-vignette img { max-width: 100%; max-height: 100%; object-fit: contain; }
 
+/* Dit ce que la case à cocher voisine commande : sans cette mention, une
+   vignette vide surmontée d'une case cochée n'a aucun sens lisible. */
+.lig-vignette-vide {
+  font-size: 10px;
+  color: var(--ui-encre-faible);
+  text-align: center;
+  padding: 0 3px 12px;
+  line-height: 1.15;
+}
+
 .lig-img-bascule {
   position: absolute;
   right: 2px;
@@ -954,19 +1044,21 @@ button.lien {
 
 .lig-titre-champ { font-weight: 600; }
 
-.lig-desc-champ {
-  width: 100%;
+/* La description de ligne est un UI.champRiche : la classe habille le wrapper,
+   pas un textarea. Plus dense qu'au catalogue — c'est une case de tableau. */
+.lig-desc-champ { gap: 0; }
+
+.lig-desc-champ .riche { border-color: var(--ui-bord); border-radius: 5px; }
+
+.lig-desc-champ .riche-zone {
+  min-height: 44px;
   padding: 6px 8px;
-  border: 1px solid var(--ui-bord);
-  border-radius: 5px;
   font-size: 12.5px;
   line-height: 1.4;
   color: var(--ui-encre-douce);
-  resize: vertical;
-  outline: none;
 }
 
-.lig-desc-champ:focus { border-color: var(--ui-accent-vif); }
+.lig-desc-champ .riche-btn { min-width: 22px; padding: 2px 5px; font-size: 12px; }
 
 .lig-col { display: flex; flex-direction: column; gap: 4px; }
 .lig-unite-champ { font-size: 11.5px; text-align: center; color: var(--ui-encre-douce); }
@@ -1015,14 +1107,265 @@ button.lien {
 .tot-tva { font-size: 12px; color: var(--ui-encre-faible); background: #fafbfc; }
 .tot-remise .tot-val { color: var(--ui-accent); }
 
-.tot-ttc {
+/* Ligne mise en avant : le total HT, comme sur le document imprimé. */
+.tot-fort {
   background: var(--ui-accent);
   color: #fff;
   font-weight: 700;
 }
 
-.tot-ttc .tot-val { font-size: 16px; }
+.tot-fort .tot-val { font-size: 16px; }
+
+.tot-ttc { font-weight: 600; }
 .tot-sec { background: #fafbfc; }
+
+/* ==========================================================================
+   Tableau de bord
+
+   Vue d'atterrissage : elle doit se lire d'un coup d'œil, sans défilement sur
+   un écran d'ordinateur portable. D'où la contrainte tenue partout ici — une
+   information par bloc, jamais deux tailles de titre dans le même bloc.
+   ========================================================================== */
+
+.tb { display: flex; flex-direction: column; gap: 18px; }
+
+/* --- Bandeau d'en-tête --- */
+
+.tb-entete {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 18px 20px;
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-bord);
+  border-radius: var(--ui-rayon);
+  box-shadow: var(--ui-ombre);
+}
+
+.tb-titre {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -.01em;
+}
+
+.tb-sous { font-size: 13px; color: var(--ui-encre-douce); margin-top: 3px; }
+.tb-sous-faible { font-size: 12px; color: var(--ui-encre-faible); }
+
+.tb-entete-actions { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+
+/* --- Alerte fiche société --- */
+
+.tb-alerte {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 14px 18px;
+  background: #fffcf5;
+  border: 1px solid #fedf89;
+  border-radius: var(--ui-rayon);
+}
+
+.tb-alerte-t { font-weight: 600; color: #b54708; }
+.tb-alerte-d { flex: 1 1 320px; font-size: 13px; color: var(--ui-encre-douce); }
+
+/* --- Tuiles chiffrées --- */
+
+.tb-tuiles {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+}
+
+.tb-tuile {
+  padding: 16px 18px;
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-bord);
+  border-radius: var(--ui-rayon);
+  box-shadow: var(--ui-ombre);
+}
+
+/* Une seule tuile porte l'accent : celle qui répond à la question qu'on se
+   pose en ouvrant l'outil — combien y a-t-il en jeu en ce moment. */
+.tb-tuile-accent {
+  background: var(--ui-accent);
+  border-color: var(--ui-accent);
+}
+
+.tb-tuile-v {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tb-tuile-l {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--ui-encre-douce);
+  margin-top: 4px;
+}
+
+.tb-tuile-d { font-size: 12px; color: var(--ui-encre-faible); margin-top: 6px; }
+
+.tb-tuile-accent .tb-tuile-v { color: #fff; }
+.tb-tuile-accent .tb-tuile-l { color: rgba(255,255,255,.82); }
+.tb-tuile-accent .tb-tuile-d { color: rgba(255,255,255,.62); }
+
+/* --- Blocs (répartition, devis récents) --- */
+
+.tb-bloc {
+  padding: 16px 18px;
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-bord);
+  border-radius: var(--ui-rayon);
+  box-shadow: var(--ui-ombre);
+}
+
+.tb-bloc-t {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--ui-encre-douce);
+  margin-bottom: 12px;
+}
+
+.tb-vide { font-size: 13px; color: var(--ui-encre-douce); margin-bottom: 12px; }
+
+/* --- Barre de répartition --- */
+
+.tb-barre {
+  display: flex;
+  gap: 3px;
+  height: 10px;
+  margin-bottom: 10px;
+}
+
+.tb-barre-p { border-radius: 3px; min-width: 6px; }
+
+.tb-legende { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+
+.tb-legende-i {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--ui-encre-douce);
+}
+
+.tb-puce {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  display: inline-block;
+}
+
+/* Teintes des statuts en aplat.
+
+   Elles ne peuvent PAS réutiliser les règles .statut-* de la liste des devis,
+   pour deux raisons distinctes :
+
+   1. celles-ci portent les fonds PÂLES des pastilles de texte (#ecfdf3 sur
+      #08602d) ; en aplat de 10 px, un vert d'eau ne se distingue pas du gris ;
+   2. à spécificité égale (0,1,0), c'est l'ordre dans la feuille qui tranche —
+      le bloc tableau de bord vient après, donc son gris de repli écrasait la
+      couleur du statut. Les sélecteurs doubles ci-dessous (0,2,0) rendent la
+      règle indépendante de l'ordre.
+
+   Même famille chromatique que les pastilles, version saturée. */
+.tb-barre-p, .tb-puce { background: #98a2b3; }             /* brouillon */
+.tb-barre-p.statut-envoye,  .tb-puce.statut-envoye  { background: #2e90fa; }
+.tb-barre-p.statut-accepte, .tb-puce.statut-accepte { background: #17b26a; }
+.tb-barre-p.statut-refuse,  .tb-puce.statut-refuse  { background: #f04438; }
+
+/* --- Devis récents --- */
+
+.tb-recents { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+
+.tb-recent {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--ui-bord);
+  border-radius: var(--ui-rayon);
+  background: var(--ui-surface);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+
+.tb-recent:hover { background: var(--ui-accent-pale); border-color: var(--ui-bord-fort); }
+
+.tb-recent-g { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+
+.tb-recent-n {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tb-recent-d { font-size: 12px; color: var(--ui-encre-faible); }
+
+.tb-recent-m {
+  flex: 0 0 auto;
+  font-weight: 700;
+  white-space: nowrap;
+  min-width: 110px;
+  text-align: right;
+}
+
+/* --- Cartes de raccourci --- */
+
+.tb-cartes {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.tb-carte {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 18px;
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-bord);
+  border-radius: var(--ui-rayon);
+  box-shadow: var(--ui-ombre);
+}
+
+.tb-carte-tete { display: flex; align-items: center; gap: 9px; }
+
+.tb-carte-ico {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  background: var(--ui-accent-pale);
+  color: var(--ui-accent);
+  flex: 0 0 auto;
+}
+
+.tb-carte-titre { font-weight: 600; }
+
+.tb-carte-d {
+  flex: 1 1 auto;
+  font-size: 12.5px;
+  color: var(--ui-encre-douce);
+  line-height: 1.45;
+}
+
+.tb-carte-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 2px; }
 
 /* ==========================================================================
    Sélecteur de machines
