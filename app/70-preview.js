@@ -31,6 +31,7 @@
       return App.calc.buildDocumentModel({
         societe: data.societe,
         devis: devis,
+        typesTarifs: App.schema.typesTarifs(data),
         imageUrls: imageUrls
       });
     });

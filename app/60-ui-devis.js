@@ -63,6 +63,13 @@
     return App.calc.computeDevis(devis).totalTTCCents;
   }
 
+  /** Type de tarif mis en avant par un devis, nom et unite compris. */
+  function tarifDe(devis) {
+    var id = App.calc.tarifDevis(devis);
+    return App.schema.typeTarif(App.store.get(), id) ||
+      { id: id, nom: id, unite: App.schema.TARIF_UNITE_DEFAUT };
+  }
+
   // ========================================================================
   // LISTE DES DEVIS
   // ========================================================================
@@ -146,6 +153,7 @@
 
   function rendreListe(hote) {
     var data = App.store.get();
+    var types = App.schema.typesTarifs(data);
 
     var barre = document.createElement('div');
     barre.className = 'barre-outils';
@@ -238,9 +246,11 @@
 
       var montant = document.createElement('div');
       montant.className = 'dev-montant';
+      var tarifListe = tarifDe(d);
       montant.innerHTML =
-        '<div class="dev-montant-v">' + App.format.euros(totalTTC(d)) + '</div>' +
-        '<div class="dev-montant-d">TTC</div>';
+        '<div class="dev-montant-v">' + App.format.prix(totalTTC(d), tarifListe.unite) + '</div>' +
+        '<div class="dev-montant-d">TTC' +
+        (types.length > 1 ? ' · ' + tarifListe.nom : '') + '</div>';
       row.appendChild(montant);
 
       var actions = document.createElement('div');
@@ -272,6 +282,7 @@
   function ouvrirSelecteurMachines() {
     var data = App.store.get();
     var disponibles = (data.catalogue || []).filter(function (p) { return !p.archive; });
+    var tarif = tarifDe(devisCourant());
 
     if (!disponibles.length) {
       UI.notifier('Aucune machine disponible.', 'alerte',
@@ -340,9 +351,13 @@
           '<div class="sel-titre">' + (p.titre || '') + '</div>';
         item.appendChild(txt);
 
+        // Le prix montre est celui du tarif que le devis met en avant : c'est
+        // celui qui chiffrera la ligne. Une fiche qui ne le porte pas le dit.
         var prix = document.createElement('div');
         prix.className = 'sel-prix';
-        prix.textContent = App.format.euros(p.prixHTCents);
+        var a = p.prix && p.prix[tarif.id];
+        prix.textContent = a == null ? 'sans ' + tarif.nom.toLowerCase() : App.format.prix(a, tarif.unite);
+        if (a == null) prix.classList.add('sel-prix-absent');
         item.appendChild(prix);
 
         item.onclick = function () { ajouter(p); };
@@ -355,7 +370,7 @@
 
     UI.modal({
       titre: 'Ajouter une machine',
-      sous: 'La ligne copie le libellé, le prix et le taux de TVA actuels. ' +
+      sous: 'La ligne copie le libellé, tous les prix et le taux de TVA actuels. ' +
             'Le catalogue pourra changer ensuite sans toucher à ce devis.',
       corps: corps,
       largeur: '640px',
@@ -791,14 +806,47 @@
     qte.appendChild(champUnite);
     row.appendChild(qte);
 
+    /*
+     * Prix unitaire : un champ pour le tarif mis en avant, puis un champ plus
+     * petit pour chaque tarif d'information affiche sur le document. Tous
+     * ecrivent dans la table `prix` de la ligne — copie figee, modifiable
+     * pour ce devis seulement. Les tarifs que le devis ne montre pas restent
+     * dans la table, intacts : les remettre en avant plus tard les retrouve.
+     */
+    function champPrix(tarifId) {
+      var i = petitChamp(App.calc.centsToEuros(App.calc.prixLigneCents(ligne, tarifId)), {
+        type: 'number', pas: '0.01', min: 0, classe: 'aligne-droite',
+        titre: 'Prix unitaire HT — copie figée, modifiable pour ce devis seulement',
+        oninput: function () {
+          majDevis(function (d) {
+            var l = d.lignes.filter(function (x) { return x.id === ligne.id; })[0];
+            if (!l) return;
+            if (!l.prix || typeof l.prix !== 'object') l.prix = {};
+            l.prix[tarifId] = App.calc.eurosToCents(i.value);
+          });
+        }
+      });
+      return i;
+    }
+
+    var devisDuRow = devisCourant();
+    var tarifRow = tarifDe(devisDuRow);
     var pu = document.createElement('div');
     pu.className = 'lig-col';
-    var champPu = petitChamp(App.calc.centsToEuros(ligne.prixHTCents), {
-      type: 'number', pas: '0.01', min: 0, classe: 'aligne-droite',
-      titre: 'Prix unitaire HT — copie figée, modifiable pour ce devis seulement',
-      oninput: function () { majNombre('prixHTCents', App.calc.eurosToCents(champPu.value)); }
+    pu.appendChild(champPrix(tarifRow.id));
+    (devisDuRow.tarifsInfo || []).forEach(function (id) {
+      var t = App.schema.typeTarif(data, id);
+      if (!t || id === tarifRow.id) return;
+      var bloc = document.createElement('div');
+      bloc.className = 'lig-pu-info';
+      var k = document.createElement('span');
+      k.className = 'lig-pu-info-k';
+      k.textContent = t.nom + ' (' + t.unite + ')';
+      k.title = 'Affiché à titre d\'information sur le document, hors totaux.';
+      bloc.appendChild(k);
+      bloc.appendChild(champPrix(id));
+      pu.appendChild(bloc);
     });
-    pu.appendChild(champPu);
     row.appendChild(pu);
 
     var rem = document.createElement('div');
@@ -828,7 +876,8 @@
     // --- Total de ligne, seule cellule reecrite a chaque frappe ---
     var cellTotal = document.createElement('div');
     cellTotal.className = 'lig-total';
-    cellTotal.textContent = App.format.euros(App.calc.ligneTotalHTCents(ligne));
+    cellTotal.textContent = App.format.prix(
+      App.calc.ligneTotalHTCents(ligne, tarifRow.id), tarifRow.unite);
     row.appendChild(cellTotal);
     refsLignes[ligne.id] = { total: cellTotal };
 
@@ -861,7 +910,7 @@
     if (!refs.corpsLignes) return;
     refs.corpsLignes.innerHTML = '';
     refsLignes = {};
-    rendreColonnes();
+    rendreTarifs();
 
     var d = devisCourant();
     if (!d) return;
@@ -880,53 +929,99 @@
   }
 
   /**
-   * Choix des caracteristiques promues en colonnes du document.
+   * Choix du tarif mis en avant, et des tarifs affiches en information.
    *
-   * Les noms proposes sont ceux que portent REELLEMENT les lignes du devis,
-   * pas ceux du catalogue : une ligne est un snapshot, et le catalogue a pu
-   * bouger depuis. Ajouter ou retirer une ligne change donc cette liste, d'ou
-   * le redessin depuis rendreLignes().
+   * Changer le tarif principal change le prix de chaque ligne et tous les
+   * totaux : c'est un changement STRUCTUREL, le tableau se reconstruit. La
+   * barre se redessine avec lui : le tarif principal ne peut pas aussi etre
+   * un tarif d'information, la liste des cases doit suivre.
+   *
+   * Un seul type dans l'espace de travail : la barre ne s'affiche pas, il n'y
+   * a rien a choisir.
    */
-  function rendreColonnes() {
-    if (!refs.colonnes) return;
-    refs.colonnes.innerHTML = '';
+  function rendreTarifs() {
+    if (!refs.tarifs) return;
+    refs.tarifs.innerHTML = '';
 
     var d = devisCourant();
     if (!d) return;
 
-    var noms = App.schema.nomsAttributsDevis(d);
-    if (!noms.length) {
-      var vide = document.createElement('span');
-      vide.className = 'cols-vide';
-      vide.textContent = 'Aucune caractéristique sur ces lignes. ' +
-        'En ajouter aux fiches du catalogue, puis réinsérer la machine.';
-      refs.colonnes.appendChild(vide);
-      return;
+    var data = App.store.get();
+    var types = App.schema.typesTarifs(data);
+    var courant = App.calc.tarifDevis(d);
+    var connu = types.some(function (t) { return t.id === courant; });
+
+    // L'en-tete de la colonne des prix porte l'unite du tarif, comme sur le
+    // document : « P.U. HT (€/mois) ».
+    if (refs.entetePu) {
+      var u = tarifDe(d).unite;
+      refs.entetePu.textContent = 'P.U. HT' +
+        (u !== App.schema.TARIF_UNITE_DEFAUT ? ' (' + u + ')' : '');
     }
 
-    var libelle = document.createElement('span');
-    libelle.className = 'cols-vide';
-    libelle.textContent = 'Colonnes :';
-    refs.colonnes.appendChild(libelle);
+    if (types.length === 1 && connu) {
+      refs.tarifs.style.display = 'none';
+      return;
+    }
+    refs.tarifs.style.display = '';
 
-    noms.forEach(function (nom) {
+    var lib = document.createElement('span');
+    lib.className = 'tarifs-lib';
+    lib.textContent = 'Tarif mis en avant :';
+    refs.tarifs.appendChild(lib);
+
+    var choix = document.createElement('select');
+    types.forEach(function (t) {
+      var o = document.createElement('option');
+      o.value = t.id;
+      o.textContent = t.nom + ' (' + t.unite + ')';
+      choix.appendChild(o);
+    });
+    if (!connu) {
+      // Le type a ete supprime depuis : on le garde selectionnable, sinon le
+      // devis changerait de montants a la simple ouverture de l'editeur.
+      var orphelin = document.createElement('option');
+      orphelin.value = courant;
+      orphelin.textContent = courant + ' (type supprimé)';
+      choix.appendChild(orphelin);
+    }
+    choix.value = courant;
+    choix.onchange = function () {
+      majDevis(function (devis) {
+        devis.tarifId = choix.value;
+        devis.tarifsInfo = (devis.tarifsInfo || []).filter(function (id) { return id !== choix.value; });
+      }, { structurel: true });
+    };
+    refs.tarifs.appendChild(choix);
+
+    var autres = types.filter(function (t) { return t.id !== courant; });
+    if (!autres.length) return;
+
+    var lib2 = document.createElement('span');
+    lib2.className = 'tarifs-lib';
+    lib2.textContent = 'Afficher aussi, à titre d\'information :';
+    refs.tarifs.appendChild(lib2);
+
+    autres.forEach(function (t) {
       var bascule = document.createElement('label');
       bascule.className = 'bascule';
       var c = document.createElement('input');
       c.type = 'checkbox';
-      c.checked = (d.colonnesAttributs || []).indexOf(nom) !== -1;
+      c.checked = (d.tarifsInfo || []).indexOf(t.id) !== -1;
       c.onchange = function () {
         majDevis(function (devis) {
-          var liste = devis.colonnesAttributs || [];
-          var i = liste.indexOf(nom);
-          if (c.checked && i === -1) liste.push(nom);
-          if (!c.checked && i !== -1) liste.splice(i, 1);
-          devis.colonnesAttributs = liste;
-        });
+          var liste = (devis.tarifsInfo || []).filter(function (id) { return id !== t.id; });
+          if (c.checked) liste.push(t.id);
+          // Dans l'ordre de la liste des types, pour que document et editeur
+          // les presentent pareil quel que soit l'ordre des clics.
+          devis.tarifsInfo = types
+            .map(function (x) { return x.id; })
+            .filter(function (id) { return liste.indexOf(id) !== -1; });
+        }, { structurel: true });
       };
       bascule.appendChild(c);
-      bascule.appendChild(document.createTextNode(' ' + nom));
-      refs.colonnes.appendChild(bascule);
+      bascule.appendChild(document.createTextNode(' ' + t.nom + ' (' + t.unite + ')'));
+      refs.tarifs.appendChild(bascule);
     });
   }
 
@@ -957,6 +1052,10 @@
     // Le corps du tableau remplace la grille de formulaire standard.
     c.corps.innerHTML = '';
 
+    refs.tarifs = document.createElement('div');
+    refs.tarifs.className = 'tarifs-barre';
+    c.corps.appendChild(refs.tarifs);
+
     var entetes = document.createElement('div');
     entetes.className = 'lig lig-entetes';
     [
@@ -964,7 +1063,7 @@
       { l: '', c: 'lig-vignette' },
       { l: 'Désignation', c: 'lig-des' },
       { l: 'Qté', c: 'lig-col' },
-      { l: 'P.U. HT', c: 'lig-col' },
+      { l: 'P.U. HT', c: 'lig-col lig-entete-pu' },
       { l: 'Remise %', c: 'lig-col' },
       { l: 'TVA', c: 'lig-col' },
       { l: 'Total HT', c: 'lig-total' },
@@ -975,15 +1074,12 @@
       e.textContent = h.l;
       entetes.appendChild(e);
     });
+    refs.entetePu = entetes.querySelector('.lig-entete-pu');
     c.corps.appendChild(entetes);
 
     refs.corpsLignes = document.createElement('div');
     refs.corpsLignes.className = 'lig-corps';
     c.corps.appendChild(refs.corpsLignes);
-
-    refs.colonnes = document.createElement('div');
-    refs.colonnes.className = 'cols-attrs';
-    c.corps.appendChild(refs.colonnes);
 
     rendreLignes();
     return c;
@@ -1038,10 +1134,12 @@
     if (!d) return;
 
     var r = App.calc.computeDevis(d);
+    var tarif = tarifDe(d);
+    var u = tarif.unite;
 
     d.lignes.forEach(function (l) {
       var ref = refsLignes[l.id];
-      if (ref) ref.total.textContent = App.format.euros(App.calc.ligneTotalHTCents(l));
+      if (ref) ref.total.textContent = App.format.prix(App.calc.ligneTotalHTCents(l, tarif.id), u);
     });
 
     if (!refs.totaux) return;
@@ -1061,26 +1159,26 @@
     }
 
     if (r.remiseGlobaleCents) {
-      ligne('Sous-total HT', App.format.euros(r.sousTotalHTCents));
+      ligne('Sous-total HT', App.format.prix(r.sousTotalHTCents, u));
       ligne('Remise ' + App.format.pourcent(r.remiseGlobalePct),
-            '- ' + App.format.euros(r.remiseGlobaleCents), 'tot-remise');
+            '- ' + App.format.prix(r.remiseGlobaleCents, u), 'tot-remise');
     }
     // Meme hierarchie que le document imprime : le HT en vedette, le TTC en
     // ligne ordinaire. L'editeur ne doit pas mettre en avant un autre chiffre
     // que celui que le client verra.
-    ligne('Total HT', App.format.euros(r.totalHTCents), 'tot-fort');
+    ligne('Total HT', App.format.prix(r.totalHTCents, u), 'tot-fort');
 
     r.recapTVA.forEach(function (t) {
       ligne('TVA ' + App.format.pourcent(t.taux) +
-            ' sur ' + App.format.euros(t.baseHTCents),
-            App.format.euros(t.montantTVACents), 'tot-tva');
+            ' sur ' + App.format.prix(t.baseHTCents, u),
+            App.format.prix(t.montantTVACents, u), 'tot-tva');
     });
 
-    ligne('Total TTC', App.format.euros(r.totalTTCCents), 'tot-ttc');
+    ligne('Total TTC', App.format.prix(r.totalTTCCents, u), 'tot-ttc');
 
     if (r.acompteCents) {
-      ligne('Acompte ' + App.format.pourcent(r.acomptePct), App.format.euros(r.acompteCents), 'tot-sec');
-      ligne('Reste à payer', App.format.euros(r.resteAPayerCents), 'tot-sec');
+      ligne('Acompte ' + App.format.pourcent(r.acomptePct), App.format.prix(r.acompteCents, u), 'tot-sec');
+      ligne('Reste à payer', App.format.prix(r.resteAPayerCents, u), 'tot-sec');
     }
   }
 

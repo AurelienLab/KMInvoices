@@ -14,7 +14,7 @@
 
   var S = {};
 
-  S.CURRENT = 1;
+  S.CURRENT = 2;
 
   S.TAUX_TVA = [20, 10, 5.5, 2.1, 0];
   S.UNITES = ['u', 'h', 'jour', 'forfait', 'mois', 'm²', 'km', 'lot'];
@@ -25,6 +25,93 @@
     envoye: 'Envoyé',
     accepte: 'Accepté',
     refuse: 'Refusé'
+  };
+
+  // --- Types de tarifs -----------------------------------------------------
+
+  /*
+   * Un produit ne porte plus UN prix mais un prix PAR TYPE DE TARIF : prix
+   * d'achat, loyer mensuel, location a la journee... Les types sont definis
+   * une fois pour l'espace de travail (settings.typesTarifs), et chaque
+   * produit renseigne ceux qui le concernent dans `prix`, indexe par
+   * identifiant de type.
+   *
+   * Un devis designe le type qu'il met en avant (`tarifId`) : c'est lui qui
+   * chiffre les lignes et les totaux. Les autres peuvent s'y afficher a titre
+   * d'information (`tarifsInfo`), plus discretement.
+   *
+   * L'identifiant du type par defaut est FIXE : c'est lui que la migration
+   * depuis la version 1 attribue a l'ancien `prixHTCents`, et celui que les
+   * fichiers anterieurs au choix du tarif mettent en avant.
+   */
+  S.TARIF_ACHAT_ID = 'achat';
+  S.TARIF_UNITE_DEFAUT = '€';
+
+  S.typeTarifDefaut = function () {
+    return { id: S.TARIF_ACHAT_ID, nom: 'Prix d\'achat', unite: S.TARIF_UNITE_DEFAUT };
+  };
+
+  S.nouveauTypeTarif = function (partial) {
+    return Object.assign({
+      id: App.uid(),
+      nom: '',
+      unite: S.TARIF_UNITE_DEFAUT
+    }, partial || {});
+  };
+
+  /**
+   * Normalise la liste des types venant d'un fichier. Jamais vide : un espace
+   * de travail sans aucun type ne saurait chiffrer quoi que ce soit.
+   */
+  S.normaliserTypesTarifs = function (liste) {
+    var vus = Object.create(null);
+    var out = (Array.isArray(liste) ? liste : [])
+      .filter(function (t) { return t && typeof t === 'object'; })
+      .map(function (t) {
+        return {
+          id: String(t.id || App.uid()),
+          nom: String(t.nom || '').trim(),
+          unite: String(t.unite || '').trim() || S.TARIF_UNITE_DEFAUT
+        };
+      })
+      .filter(function (t) {
+        if (vus[t.id]) return false;
+        vus[t.id] = true;
+        return true;
+      });
+    return out.length ? out : [S.typeTarifDefaut()];
+  };
+
+  /** Types de tarifs de l'espace de travail, toujours au moins un. */
+  S.typesTarifs = function (data) {
+    var liste = data && data.settings && data.settings.typesTarifs;
+    return Array.isArray(liste) && liste.length ? liste : [S.typeTarifDefaut()];
+  };
+
+  /** Type de tarif par identifiant, ou null. */
+  S.typeTarif = function (data, id) {
+    return S.typesTarifs(data).filter(function (t) { return t.id === id; })[0] || null;
+  };
+
+  /**
+   * Normalise une table de prix { typeId: centimes }. Les cles inconnues sont
+   * conservees quand `ids` n'est pas fourni : une ligne de devis est un
+   * snapshot et garde ses prix meme si le type a disparu depuis.
+   */
+  S.normaliserPrix = function (prix, ids) {
+    var out = {};
+    if (!prix || typeof prix !== 'object') return out;
+    Object.keys(prix).forEach(function (k) {
+      if (ids && ids.indexOf(k) === -1) return;
+      var n = Number(prix[k]);
+      if (isFinite(n)) out[k] = Math.round(n);
+    });
+    return out;
+  };
+
+  /** Copie d'une table de prix, pour la regle du snapshot. */
+  S.copierPrix = function (prix) {
+    return S.normaliserPrix(prix);
   };
 
   // --- Valeurs par defaut --------------------------------------------------
@@ -57,7 +144,9 @@
       validiteJoursParDefaut: 30,
       tauxTVAParDefaut: 20,
       acomptePctParDefaut: 30,
-      template: 'default'
+      template: 'default',
+      // Le premier de la liste est celui qu'un nouveau devis met en avant.
+      typesTarifs: [S.typeTarifDefaut()]
     };
   };
 
@@ -286,17 +375,16 @@
    * interdirait le second cas. Le caractere numerique se decide a la lecture,
    * via S.valeurNumerique.
    *
-   * `totaliser` n'a d'effet que sur les valeurs numeriques. Cumuler une
-   * puissance a du sens, cumuler une duree de garantie n'en a aucun : c'est a
-   * la personne qui saisit la fiche de le dire, l'outil ne peut pas le deviner.
+   * Les caracteristiques ne s'impriment QUE sur la fiche produit annexee au
+   * document : ni colonnes du tableau, ni cumuls. L'ancien drapeau
+   * `totaliser` n'a plus d'objet et disparait a la normalisation.
    */
   S.nouvelAttribut = function (partial) {
     return Object.assign({
       id: App.uid(),
       nom: '',
       valeur: '',
-      unite: '',
-      totaliser: false
+      unite: ''
     }, partial || {});
   };
 
@@ -324,8 +412,7 @@
           id: a.id || App.uid(),
           nom: String(a.nom || '').trim(),
           valeur: a.valeur == null ? '' : String(a.valeur),
-          unite: String(a.unite || '').trim(),
-          totaliser: !!a.totaliser
+          unite: String(a.unite || '').trim()
         };
       })
       .filter(function (a) { return a.nom !== ''; });
@@ -375,28 +462,14 @@
     })[0] || '';
   };
 
-  /** Noms d'attributs presents sur les lignes d'un devis, dans l'ordre d'apparition. */
-  S.nomsAttributsDevis = function (devis) {
-    var vus = Object.create(null);
-    var ordre = [];
-    ((devis && devis.lignes) || []).forEach(function (l) {
-      (l.attributs || []).forEach(function (a) {
-        if (a && a.nom && !vus[a.nom]) {
-          vus[a.nom] = true;
-          ordre.push(a.nom);
-        }
-      });
-    });
-    return ordre;
-  };
-
   S.nouveauProduit = function (partial) {
     var p = {
       id: App.uid(),
       reference: '',
       titre: '',
       description: '',
-      prixHTCents: 0,
+      // { typeId: centimes } — voir « Types de tarifs » plus haut.
+      prix: {},
       tauxTVA: 20,
       unite: 'u',
       imageFile: null,
@@ -408,6 +481,7 @@
 
   S.nouveauDevis = function (settings, partial) {
     var st = settings || S.defaultSettings();
+    var types = S.normaliserTypesTarifs(st.typesTarifs);
     return Object.assign({
       id: App.uid(),
       numero: S.formaterNumero(st.numerotation),
@@ -417,10 +491,11 @@
       clientId: null,          // lien vers le repertoire, peut devenir orphelin
       client: S.clientVide(),  // SNAPSHOT des coordonnees a l'insertion
       lignes: [],
-      // Noms d'attributs promus en colonnes du document. Une liste de NOMS,
-      // pas d'identifiants : les attributs sont recopies sur chaque ligne, et
-      // deux lignes portent deux objets distincts pour le meme nom.
-      colonnesAttributs: [],
+      // Type de tarif mis en avant : chiffre les lignes et les totaux.
+      tarifId: types[0].id,
+      // Types affiches en plus, a titre d'information, sans entrer dans les
+      // totaux. Identifiants, dans l'ordre de la liste des types.
+      tarifsInfo: [],
       remiseGlobalePct: 0,
       acomptePct: st.acomptePctParDefaut,
       notes: ''
@@ -430,11 +505,15 @@
   /**
    * Cree une ligne de devis a partir d'un produit du catalogue.
    *
-   * REGLE DU SNAPSHOT : la ligne COPIE le libelle, le prix, le taux, le nom
-   * de l'image ET LES ATTRIBUTS au moment de l'insertion. Un devis emis ne
+   * REGLE DU SNAPSHOT : la ligne COPIE le libelle, TOUS LES PRIX, le taux, le
+   * nom de l'image ET LES ATTRIBUTS au moment de l'insertion. Un devis emis ne
    * doit jamais bouger parce que le catalogue a change. produitId ne sert qu'a
    * proposer une resynchronisation explicite, jamais a recalculer
    * automatiquement.
+   *
+   * Tous les prix, et pas seulement celui du tarif en cours : le devis peut
+   * changer de tarif mis en avant apres coup, et doit alors retrouver les
+   * montants tels qu'ils etaient le jour de l'insertion.
    */
   S.ligneDepuisProduit = function (produit, quantite) {
     return {
@@ -443,7 +522,7 @@
       reference: produit.reference,
       titre: produit.titre,
       description: produit.description,
-      prixHTCents: produit.prixHTCents,
+      prix: S.copierPrix(produit.prix),
       tauxTVA: produit.tauxTVA,
       unite: produit.unite,
       imageFile: produit.imageFile,
@@ -463,7 +542,7 @@
       reference: '',
       titre: '',
       description: '',
-      prixHTCents: 0,
+      prix: {},
       tauxTVA: st.tauxTVAParDefaut,
       unite: 'u',
       imageFile: null,
@@ -560,12 +639,51 @@
 
   /**
    * Table des migrations : chaque entree fait passer de la version N a N+1.
-   * Vide au depart, mais la couture est en place : c'est ce qui permettra de
-   * lire les fichiers d'aujourd'hui dans six mois.
-   *
-   *   S.migrations[1] = function (data) { ...; data.schemaVersion = 2; return data; };
    */
   S.migrations = {};
+
+  /**
+   * 1 -> 2 : types de tarifs.
+   *
+   * L'unique prix d'un produit (`prixHTCents`) devient le prix du type par
+   * defaut « Prix d'achat ». Les lignes de devis suivent : leur prix fige est
+   * recopie sous le meme identifiant, et chaque devis met ce type en avant,
+   * ce qui lui conserve exactement ses montants d'avant la migration.
+   *
+   * Les colonnes de caracteristiques et le drapeau « totaliser » disparaissent
+   * : les caracteristiques ne s'impriment plus que sur la fiche annexee.
+   */
+  S.migrations[1] = function (data) {
+    function versPrix(objet) {
+      if (objet.prix && typeof objet.prix === 'object') return;
+      objet.prix = {};
+      objet.prix[S.TARIF_ACHAT_ID] = Number(objet.prixHTCents) || 0;
+      delete objet.prixHTCents;
+    }
+    function sansTotaliser(liste) {
+      (liste || []).forEach(function (a) { if (a) delete a.totaliser; });
+    }
+
+    data.settings = data.settings || {};
+    if (!Array.isArray(data.settings.typesTarifs) || !data.settings.typesTarifs.length) {
+      data.settings.typesTarifs = [S.typeTarifDefaut()];
+    }
+    (data.catalogue || []).forEach(function (p) {
+      versPrix(p);
+      sansTotaliser(p.attributs);
+    });
+    (data.devis || []).forEach(function (d) {
+      if (!d.tarifId) d.tarifId = S.TARIF_ACHAT_ID;
+      if (!Array.isArray(d.tarifsInfo)) d.tarifsInfo = [];
+      delete d.colonnesAttributs;
+      (d.lignes || []).forEach(function (l) {
+        versPrix(l);
+        sansTotaliser(l.attributs);
+      });
+    });
+    data.schemaVersion = 2;
+    return data;
+  };
 
   S.migrate = function (data) {
     var d = data;
@@ -591,10 +709,14 @@
    */
   S.normalize = function (data) {
     var base = S.defaultWorkspace();
+    var settings = Object.assign(base.settings, data.settings || {});
+    settings.typesTarifs = S.normaliserTypesTarifs(settings.typesTarifs);
+    var idsTypes = settings.typesTarifs.map(function (t) { return t.id; });
+
     var out = {
       schemaVersion: data.schemaVersion || S.CURRENT,
       societe: Object.assign(base.societe, data.societe || {}),
-      settings: Object.assign(base.settings, data.settings || {}),
+      settings: settings,
       // Absent des fichiers anterieurs a l'ajout du repertoire : un tableau
       // vide suffit, aucune migration de version n'est necessaire.
       clients: (data.clients || []).map(function (c) {
@@ -608,6 +730,9 @@
         return Object.assign(S.nouveauProduit(), p, {
           id: p.id || App.uid(),
           description: S.normaliserDescription(p.description),
+          // Un prix dont le type a ete supprime n'a plus de sens au catalogue
+          // — contrairement a la ligne de devis, qui est un snapshot.
+          prix: S.normaliserPrix(p.prix, idsTypes),
           attributs: S.normaliserAttributs(p.attributs)
         });
       }),
@@ -623,18 +748,20 @@
           if (ll.quantite === undefined) ll.quantite = 1;
           if (ll.remisePct === undefined) ll.remisePct = 0;
           ll.description = S.normaliserDescription(ll.description);
+          ll.prix = S.normaliserPrix(ll.prix);
           ll.attributs = S.normaliserAttributs(ll.attributs);
           return ll;
         });
         if (dd.remiseGlobalePct === undefined) dd.remiseGlobalePct = 0;
         if (dd.acomptePct === undefined) dd.acomptePct = 0;
-        // Une colonne dont plus aucune ligne ne porte l'attribut serait une
-        // colonne vide sur le document : on ne garde que celles qui ont encore
-        // un sens. Supprimer la derniere ligne concernee retire la colonne.
-        var presents = S.nomsAttributsDevis(dd);
-        dd.colonnesAttributs = (Array.isArray(dd.colonnesAttributs) ? dd.colonnesAttributs : [])
-          .filter(function (nom, i, tab) {
-            return presents.indexOf(nom) !== -1 && tab.indexOf(nom) === i;
+        // Le tarif mis en avant est conserve tel quel meme si son type a
+        // disparu de la liste : les lignes portent encore leurs prix sous cet
+        // identifiant, et les totaux du devis ne doivent pas changer parce
+        // qu'on a retouche les reglages. Seul le nom du type se perd.
+        if (!dd.tarifId) dd.tarifId = idsTypes[0];
+        dd.tarifsInfo = (Array.isArray(dd.tarifsInfo) ? dd.tarifsInfo : [])
+          .filter(function (id, i, tab) {
+            return id !== dd.tarifId && idsTypes.indexOf(id) !== -1 && tab.indexOf(id) === i;
           });
         return dd;
       })

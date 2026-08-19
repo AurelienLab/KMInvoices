@@ -139,6 +139,10 @@
     add(meta, el('div', 'doc-titre', 'Proposition commerciale'));
     var table = el('div', 'doc-meta-liste');
     add(table, paire('Date d\'émission', m.devis.dateEmissionTexte));
+    // Le tarif mis en avant se nomme ici des que l'espace de travail en
+    // connait plusieurs : « Location » ou « Prix d'achat » change la nature
+    // de tous les montants qui suivent, le lecteur doit le savoir d'emblee.
+    if (m.tarif.afficherNom) add(table, paire('Tarif', m.tarif.nom));
     add(meta, table);
 
     return add(head, ident, meta);
@@ -166,20 +170,15 @@
     // display: table-header-group en CSS -> l'en-tete se repete a chaque page.
     var thead = el('thead');
     var tr = el('tr');
-    add(tr, el('th', 'c-des', 'Désignation'));
-
-    // Colonnes d'attributs, entre la designation et les chiffres : elles
-    // decrivent la machine, elles ne la chiffrent pas.
-    m.colonnes.forEach(function (c) {
-      add(tr, el('th', 'c-attr', c.uniteCommune ? c.nom + ' (' + c.uniteCommune + ')' : c.nom));
-    });
-
     add(tr,
+      el('th', 'c-des', 'Désignation'),
       el('th', 'c-qte', 'Qté'),
-      el('th', 'c-pu', 'P.U. HT'),
+      // L'unite du tarif monte dans l'en-tete (« P.U. HT (€/mois) ») : les
+      // cellules restent des nombres nus qui s'alignent.
+      el('th', 'c-pu', m.tarif.colonneTexte),
       m.afficherRemise ? el('th', 'c-rem', 'Remise') : null,
       m.afficherTVA ? el('th', 'c-tva', 'TVA') : null,
-      el('th', 'c-tot', 'Total HT')
+      el('th', 'c-tot', m.tarif.totalTexte)
     );
     add(thead, tr);
     add(table, thead);
@@ -219,13 +218,22 @@
       add(qte, el('span', 'lig-qte-n', l.quantiteTexte));
       if (l.unite) add(qte, el('span', 'lig-unite', ' ' + l.unite));
 
-      add(row, des);
-      l.attributsTexte.forEach(function (v) {
-        add(row, el('td', 'c-attr', v || '—'));
+      /*
+       * Prix unitaire du tarif mis en avant, et sous lui, en plus discret,
+       * les autres tarifs que le devis a choisi de montrer : « Location
+       * 60,00 €/mois » sous un prix d'achat. Ils informent, ils ne comptent
+       * pas — ni dans le total de la ligne, ni dans la synthese.
+       */
+      var pu = el('td', 'c-pu');
+      add(pu, el('div', 'lig-pu', l.prixUnitaireTexte));
+      l.prixInfo.forEach(function (p) {
+        add(pu, el('div', 'lig-pu-info', p.nom + ' ' + p.texte));
       });
+
       add(row,
+        des,
         qte,
-        el('td', 'c-pu', l.prixUnitaireTexte),
+        pu,
         m.afficherRemise ? el('td', 'c-rem', l.remiseTexte || '—') : null,
         m.afficherTVA ? el('td', 'c-tva', l.tauxTVATexte) : null,
         el('td', 'c-tot', l.totalHTTexte)
@@ -233,56 +241,9 @@
       add(tbody, row);
     });
 
-    /*
-     * Cumuls des caracteristiques, EN BAS DE LEUR PROPRE COLONNE.
-     *
-     * C'est la seule position ou le total se lit sans avoir a rechercher de
-     * quelle caracteristique il parle : il est sous elle. Volontairement dans
-     * le <tbody> et non dans un <tfoot> — un tfoot se repeterait en bas de
-     * chaque feuille, et un cumul partiel repete trois fois se lirait comme
-     * trois valeurs contradictoires.
-     */
-    if (m.afficherTotauxColonnes) {
-      var totaux = el('tr', 'doc-ligne-totaux');
-      add(totaux, el('td', 'c-des', 'Total de l\'ensemble'));
-      m.colonnes.forEach(function (c) {
-        add(totaux, el('td', 'c-attr', c.totalTexte || ''));
-      });
-      // Les colonnes chiffrees restent vides : la synthese financiere plus bas
-      // est le seul endroit ou les montants se totalisent. Le colspan suit les
-      // colonnes reellement emises — qte, P.U., total, plus les optionnelles.
-      var reste = el('td', 'c-reste');
-      reste.colSpan = 3 + (m.afficherRemise ? 1 : 0) + (m.afficherTVA ? 1 : 0);
-      add(totaux, reste);
-      add(tbody, totaux);
-    }
-
     add(table, tbody);
 
     return table;
-  }
-
-  /**
-   * Cumuls des attributs numeriques marques « totaliser » au catalogue.
-   *
-   * Multiplies par les quantites : c'est le total de l'installation proposee,
-   * pas la somme des caracteristiques unitaires. Absent si rien n'est
-   * cumulable — ce bloc n'a pas de raison d'exister a vide.
-   */
-  function renderTotauxAttributs(m) {
-    if (!m.totauxAttributs || !m.totauxAttributs.length) return null;
-
-    var bloc = el('section', 'doc-attr-totaux');
-    add(bloc, el('div', 'doc-bloc-titre', 'Totaux de l\'ensemble'));
-
-    var liste = el('div', 'attr-liste');
-    m.totauxAttributs.forEach(function (t) {
-      var n = el('div', 'attr-tot');
-      add(n, el('span', 'attr-tot-k', t.nom), el('span', 'attr-tot-v', t.totalTexte));
-      add(liste, n);
-    });
-
-    return add(bloc, liste);
   }
 
   /**
@@ -439,13 +400,20 @@
         add(detail, t);
       }
 
+      // Le prix de la fiche est celui du tarif mis en avant, nomme quand il
+      // y a lieu de le distinguer ; les tarifs d'information suivent, en
+      // retrait, comme sur la ligne du tableau.
       var prix = el('div', 'fiche-prix');
       add(prix,
-        el('span', 'fiche-prix-k', 'Prix unitaire HT'),
+        el('span', 'fiche-prix-k',
+          (m.tarif.afficherNom ? m.tarif.nom : 'Prix unitaire') + ' HT'),
         el('span', 'fiche-prix-v', f.prixUnitaireTexte +
           (f.unite ? ' / ' + f.unite : ''))
       );
       add(detail, prix);
+      f.prixInfo.forEach(function (p) {
+        add(detail, el('div', 'fiche-prix-info', p.nom + ' HT : ' + p.texte));
+      });
       add(detail, el('div', 'fiche-tva', 'TVA ' + f.tauxTVATexte));
 
       add(corps, detail);
@@ -517,7 +485,6 @@
         renderEnTete(model),
         renderClient(model),
         renderLignes(model),
-        renderTotauxAttributs(model),
         renderSynthese(model),
         renderConditions(model),
         // Les fiches ferment le document : elles sont une annexe, jamais un

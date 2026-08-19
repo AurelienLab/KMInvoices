@@ -274,15 +274,12 @@
 
 /* Largeurs de colonnes.
 
-   c-des absorbe le reste : c'est la seule colonne elastique. Les colonnes
-   d'attributs sont donc facturees a la designation, ce qui est le bon
-   arbitrage tant qu'elles restent peu nombreuses. Au-dela de trois ou quatre,
-   la designation devient illisible — c'est une limite du format A4, pas du
-   code, et la selection des colonnes est justement la ou on la gere. */
+   c-des absorbe le reste : c'est la seule colonne elastique. Le P.U. est un
+   peu plus large que les autres montants : son en-tete peut porter l'unite
+   du tarif (« P.U. HT (€/mois) ») et ses cellules, les tarifs d'information. */
 .doc-root .c-des { width: auto; }
-.doc-root .c-attr { width: 20mm; }
 .doc-root .c-qte { width: 15mm; }
-.doc-root .c-pu  { width: 22mm; }
+.doc-root .c-pu  { width: 26mm; }
 .doc-root .c-rem { width: 16mm; }
 .doc-root .c-tva { width: 14mm; }
 .doc-root .c-tot { width: 24mm; }
@@ -357,49 +354,20 @@
 .doc-root .c-rem { color: var(--encre-douce); }
 .doc-root .c-tva { color: var(--encre-douce); font-size: var(--corps-petit); }
 
-/* Attributs : chiffres alignes a droite comme les montants, mais sans le poids
-   typographique — ce sont des caracteristiques, pas des sommes a payer.
+/* Tarifs d'information, sous le prix unitaire.
 
-   Le nowrap ne vaut QUE pour les valeurs : « 5 kW » coupe entre le nombre et
-   son unite ne veut plus rien dire. Un en-tete, lui, doit pouvoir se replier —
-   voir la regle suivante. */
-.doc-root td.c-attr {
-  font-family: var(--police-chiffres);
-  font-size: var(--corps-petit);
-  white-space: nowrap;
-}
+   Ils se lisent comme une note : plus petits, en encre douce, le nom du
+   tarif devant le montant. Le nowrap garde « 60,00 €/mois » d'un seul tenant,
+   le nom, lui, peut se replier. */
+.doc-root .lig-pu { white-space: nowrap; }
 
-/* En-tetes de colonnes d'attributs.
-
-   Ce sont des noms libres — « Encombrement au sol », « Puissance nominale » —
-   dans une colonne de 20 mm. Sans retour a la ligne, ils debordent sur leurs
-   voisins et les titres se chevauchent. On autorise donc le repli, y compris
-   AU MILIEU d'un mot trop long pour la colonne : mieux vaut une cesure qu'un
-   mot qui passe par-dessus la colonne d'a cote. */
-.doc-root th.c-attr {
-  white-space: normal;
-  overflow-wrap: break-word;
-  word-break: break-word;
-  hyphens: auto;
-  letter-spacing: .02em;
-  line-height: 1.2;
-}
-
-/* Ligne de cumuls, en bas des colonnes de caracteristiques. */
-.doc-root .doc-ligne-totaux td {
-  border-top: var(--filet-fort) solid var(--accent);
-  border-bottom: 0;
-  padding-top: 2mm;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.doc-root .doc-ligne-totaux td.c-des {
+.doc-root .lig-pu-info {
+  margin-top: .6mm;
+  font-family: var(--police);
   font-size: var(--corps-micro);
-  letter-spacing: .08em;
-  text-transform: uppercase;
+  line-height: 1.25;
   color: var(--encre-douce);
-  font-weight: 700;
+  white-space: normal;
 }
 
 /* Renvoi vers la fiche annexee. */
@@ -409,47 +377,6 @@
   font-size: var(--corps-micro);
   color: var(--accent);
   text-decoration: underline;
-}
-
-/* ==========================================================================
-   Totaux d'attributs
-
-   Cumul des caracteristiques numeriques de l'ensemble propose. Pose entre les
-   lignes et la synthese financiere : c'est une lecture technique, elle ne doit
-   pas se melanger aux montants.
-   ========================================================================== */
-
-.doc-root .doc-attr-totaux {
-  margin-top: 4mm;
-  break-inside: avoid;
-  page-break-inside: avoid;
-}
-
-.doc-root .attr-liste {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1.5mm 8mm;
-  margin-top: 1.5mm;
-}
-
-.doc-root .attr-tot {
-  display: flex;
-  align-items: baseline;
-  gap: 2mm;
-  padding: 1mm 2.5mm;
-  border: var(--filet-fin) solid var(--filet-couleur);
-  border-radius: var(--rayon);
-}
-
-.doc-root .attr-tot-k {
-  font-size: var(--corps-petit);
-  color: var(--encre-douce);
-}
-
-.doc-root .attr-tot-v {
-  font-family: var(--police-chiffres);
-  font-weight: 700;
-  white-space: nowrap;
 }
 
 /* ==========================================================================
@@ -723,6 +650,13 @@
   white-space: nowrap;
 }
 
+.doc-root .fiche-prix-info {
+  margin-top: 1.2mm;
+  font-size: var(--corps-petit);
+  color: var(--encre-douce);
+  text-align: right;
+}
+
 .doc-root .fiche-tva {
   margin-top: 1.2mm;
   font-size: var(--corps-micro);
@@ -789,7 +723,6 @@
   /* Blocs de synthese : jamais coupes en deux. Ils basculent entierement sur
      la feuille suivante s'ils ne tiennent pas. */
   .doc-root .doc-synthese,
-  .doc-root .doc-attr-totaux,
   .doc-root .doc-conditions,
   .doc-root .doc-totaux,
   .doc-root .doc-tva {

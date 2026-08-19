@@ -90,7 +90,13 @@
   <label><input type="checkbox" id="optImages" checked> Images</label>
   <label><input type="checkbox" id="optRemise" checked> Remise globale</label>
   <label><input type="checkbox" id="optRemiseLigne" checked> Remises de ligne</label>
-  <label><input type="checkbox" id="optColonnes"> Toutes les colonnes</label>
+  <label>Tarif
+    <select id="optTarif">
+      <option value="achat">Prix d'achat (€)</option>
+      <option value="location">Location (€/mois)</option>
+    </select>
+  </label>
+  <label><input type="checkbox" id="optTarifsInfo"> Autres tarifs en info</label>
   <label><input type="checkbox" id="optAcompte" checked> Acompte</label>
   <label><input type="checkbox" id="optLogo" checked> Logo</label>
   <label><input type="checkbox" id="optGuides"> Repères A4</label>
@@ -260,6 +266,12 @@
   ].map(App.schema.normaliserDescription);
 
   var UNITES = ['u', 'u', 'u', 'forfait', 'h', 'jour'];
+
+  // Deux types de tarifs : le cas nominal de l'outil depuis qu'il sait louer.
+  var TYPES_TARIFS = [
+    { id: 'achat', nom: 'Prix d\'achat', unite: '€' },
+    { id: 'location', nom: 'Location', unite: '€/mois' }
+  ];
   var TAUX   = [20, 20, 20, 20, 20, 10, 20, 20, 0, 20, 10, 20];
 
   function construireDevis(options) {
@@ -273,16 +285,22 @@
         reference: 'KM-' + String(1200 + i * 7),
         titre: m.nom + suffixe + ' — modèle ' + (i % 3 === 0 ? 'XR-450' : (i % 3 === 1 ? 'S220' : 'HD-9')),
         description: DESCRIPTIONS[i % DESCRIPTIONS.length],
-        prixHTCents: [489000, 1275000, 96500, 328000, 154900, 42000][i % 6] + i * 1130,
+        // Un prix d'achat partout, un loyer sur deux lignes sur trois : le
+        // cas d'une ligne sans prix pour un tarif doit rester visible.
+        prix: (function () {
+          var p = { achat: [489000, 1275000, 96500, 328000, 154900, 42000][i % 6] + i * 1130 };
+          if (i % 3 !== 2) p.location = [18900, 46500, 4200, 12900, 6900, 1900][i % 6] + i * 40;
+          return p;
+        })(),
         tauxTVA: TAUX[i % TAUX.length],
         unite: UNITES[i % UNITES.length],
         imageFile: options.images ? ('img-' + (i % MACHINES.length) + '.jpg') : null,
-        // Puissance totalisable, tension non numérique : les deux cas que le
-        // document doit savoir traiter côte à côte dans la même colonne.
+        // Valeurs numériques et texte libre : les caractéristiques ne
+        // s'impriment que sur la fiche annexée.
         attributs: [
-          { id: 'a' + i + 'p', nom: 'Puissance', valeur: String([5, 7.5, 2.2, 11, 4, 1.5][i % 6]).replace('.', ','), unite: 'kW', totaliser: true },
-          { id: 'a' + i + 'm', nom: 'Masse', valeur: String([1200, 2400, 380, 3100, 950, 210][i % 6]), unite: 'kg', totaliser: true },
-          { id: 'a' + i + 't', nom: 'Alimentation', valeur: i % 4 === 0 ? '230 V mono' : '400 V triphasé', unite: '', totaliser: false }
+          { id: 'a' + i + 'p', nom: 'Puissance', valeur: String([5, 7.5, 2.2, 11, 4, 1.5][i % 6]).replace('.', ','), unite: 'kW' },
+          { id: 'a' + i + 'm', nom: 'Masse', valeur: String([1200, 2400, 380, 3100, 950, 210][i % 6]), unite: 'kg' },
+          { id: 'a' + i + 't', nom: 'Alimentation', valeur: i % 4 === 0 ? '230 V mono' : '400 V triphasé', unite: '' }
         ],
         quantite: [1, 1, 2, 1, 3, 1.5][i % 6],
         remisePct: options.remiseLigne ? [0, 0, 5, 0, 10, 0][i % 6] : 0
@@ -294,9 +312,8 @@
       numero: '2026-0042',
       dateEmission: '2026-08-07',
       statut: 'brouillon',
-      colonnesAttributs: options.colonnes
-        ? ['Puissance', 'Masse', 'Alimentation']
-        : ['Puissance'],
+      tarifId: options.tarif,
+      tarifsInfo: options.tarifsInfo ? ['achat', 'location'] : [],
       client: {
         nom: 'Ateliers Fournier & Fils',
         contact: 'Laurent Fournier, responsable production',
@@ -347,7 +364,8 @@
       // Décocher fait disparaître la colonne de remise du document : c'est
       // le cas qu'on veut pouvoir regarder, pas seulement supposer.
       remiseLigne: document.getElementById('optRemiseLigne').checked,
-      colonnes: document.getElementById('optColonnes').checked,
+      tarif: document.getElementById('optTarif').value,
+      tarifsInfo: document.getElementById('optTarifsInfo').checked,
       acompte: document.getElementById('optAcompte').checked,
       logo:    document.getElementById('optLogo').checked
     };
@@ -365,6 +383,7 @@
       var model = App.calc.buildDocumentModel({
         societe: societe,
         devis: construireDevis(options),
+        typesTarifs: TYPES_TARIFS,
         imageUrls: imageUrls
       });
 
@@ -408,7 +427,7 @@
     return true;
   }
 
-  ['nbLignes', 'optImages', 'optRemise', 'optRemiseLigne', 'optColonnes',
+  ['nbLignes', 'optImages', 'optRemise', 'optRemiseLigne', 'optTarif', 'optTarifsInfo',
    'optAcompte', 'optLogo', 'tplSelect']
     .forEach(function (id) {
       document.getElementById(id).addEventListener('change', rendre);

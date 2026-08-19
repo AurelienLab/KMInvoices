@@ -41,6 +41,17 @@
     return nfMontant.format((cents || 0) / 100);
   };
 
+  /**
+   * Centimes + unite de tarif -> "1 234,56 €/mois".
+   *
+   * L'unite vient du type de tarif (voir App.schema.typesTarifs) : « € » pour
+   * un prix de vente, « €/mois » pour une location. Espace insecable entre le
+   * nombre et l'unite, comme le fait Intl pour le symbole seul.
+   */
+  F.prix = function (cents, unite) {
+    return F.montant(cents) + '\u00a0' + (unite || '€');
+  };
+
   /** Quantite numerique -> "7,5". */
   F.quantite = function (n) {
     return nfQte.format(n || 0);

@@ -15,8 +15,8 @@
   // Source unique de la version. outils/build.py la lit pour estampiller le
   // livrable ; il ne la reecrit jamais, sous peine de divergence entre la
   // version affichee et la version reellement executee.
-  App.version = '0.2.0-rc.3';
-  App.schemaVersion = 1;
+  App.version = '1.0.0';
+  App.schemaVersion = 2;
 
   // Renseigne par outils/build.py dans le livrable en fichier unique, absent
   // quand la page tourne sur les sources eclatees. Sert a adapter les messages

@@ -190,23 +190,23 @@
   groupe('Total de ligne');
 
   test('total = prix x quantité', function () {
-    egal(App.calc.ligneTotalHTCents({ prixHTCents: 48900, quantite: 2, remisePct: 0 }), 97800);
+    egal(App.calc.ligneTotalHTCents({ prix: { achat: 48900 }, quantite: 2, remisePct: 0 }), 97800);
   });
 
   test('remise de ligne appliquée avant arrondi', function () {
     // 10,03 x 3 x 0,95 = 28,5855 -> 28,59
-    egal(App.calc.ligneTotalHTCents({ prixHTCents: 1003, quantite: 3, remisePct: 5 }), 2859);
+    egal(App.calc.ligneTotalHTCents({ prix: { achat: 1003 }, quantite: 3, remisePct: 5 }), 2859);
   });
 
   test('quantité décimale acceptée', function () {
     // 65,00 x 7,5 = 487,50
-    egal(App.calc.ligneTotalHTCents({ prixHTCents: 6500, quantite: 7.5, remisePct: 0 }), 48750);
+    egal(App.calc.ligneTotalHTCents({ prix: { achat: 6500 }, quantite: 7.5, remisePct: 0 }), 48750);
   });
 
   test('arrondi ligne par ligne, jamais sur la somme brute', function () {
     // Trois lignes à 0,335 € : chacune arrondie à 0,34 -> 1,02.
     // Sommer avant d'arrondir donnerait 1,01 : c'est l'erreur classique.
-    var l = { prixHTCents: 67, quantite: 0.5, remisePct: 0 };
+    var l = { prix: { achat: 67 }, quantite: 0.5, remisePct: 0 };
     var r = App.calc.computeDevis({ lignes: [l, l, l] });
     egal(App.calc.ligneTotalHTCents(l), 34);
     egal(r.sousTotalHTCents, 102);
@@ -221,10 +221,10 @@
   test('récapitulatif ventilé par taux, ordre décroissant', function () {
     var r = App.calc.computeDevis({
       lignes: [
-        { prixHTCents: 10000, quantite: 1, tauxTVA: 20 },
-        { prixHTCents: 5000, quantite: 1, tauxTVA: 10 },
-        { prixHTCents: 2000, quantite: 1, tauxTVA: 5.5 },
-        { prixHTCents: 3000, quantite: 1, tauxTVA: 20 }
+        { prix: { achat: 10000 }, quantite: 1, tauxTVA: 20 },
+        { prix: { achat: 5000 }, quantite: 1, tauxTVA: 10 },
+        { prix: { achat: 2000 }, quantite: 1, tauxTVA: 5.5 },
+        { prix: { achat: 3000 }, quantite: 1, tauxTVA: 20 }
       ]
     });
     egal(r.recapTVA.length, 3);
@@ -239,7 +239,7 @@
   });
 
   test('taux 0 produit une base sans TVA', function () {
-    var r = App.calc.computeDevis({ lignes: [{ prixHTCents: 10000, quantite: 1, tauxTVA: 0 }] });
+    var r = App.calc.computeDevis({ lignes: [{ prix: { achat: 10000 }, quantite: 1, tauxTVA: 0 }] });
     egal(r.totalTVACents, 0);
     egal(r.totalTTCCents, 10000);
   });
@@ -247,8 +247,8 @@
   test('TTC = HT + TVA, toujours', function () {
     var r = App.calc.computeDevis({
       lignes: [
-        { prixHTCents: 3333, quantite: 3, tauxTVA: 20 },
-        { prixHTCents: 1777, quantite: 7, tauxTVA: 5.5 }
+        { prix: { achat: 3333 }, quantite: 3, tauxTVA: 20 },
+        { prix: { achat: 1777 }, quantite: 7, tauxTVA: 5.5 }
       ]
     });
     egal(r.totalTTCCents, r.totalHTCents + r.totalTVACents);
@@ -262,7 +262,7 @@
 
   test('la remise s\'applique après le sous-total', function () {
     var r = App.calc.computeDevis({
-      lignes: [{ prixHTCents: 10000, quantite: 1, tauxTVA: 20 }],
+      lignes: [{ prix: { achat: 10000 }, quantite: 1, tauxTVA: 20 }],
       remiseGlobalePct: 10
     });
     egal(r.sousTotalHTCents, 10000);
@@ -274,9 +274,9 @@
   test('la somme des parts ventilées égale exactement la remise', function () {
     var r = App.calc.computeDevis({
       lignes: [
-        { prixHTCents: 10000, quantite: 1, tauxTVA: 20 },
-        { prixHTCents: 5000, quantite: 1, tauxTVA: 10 },
-        { prixHTCents: 3333, quantite: 1, tauxTVA: 5.5 }
+        { prix: { achat: 10000 }, quantite: 1, tauxTVA: 20 },
+        { prix: { achat: 5000 }, quantite: 1, tauxTVA: 10 },
+        { prix: { achat: 3333 }, quantite: 1, tauxTVA: 5.5 }
       ],
       remiseGlobalePct: 7
     });
@@ -289,9 +289,9 @@
     // 3 bases, remise dont le prorata ne tombe pas juste.
     var r = App.calc.computeDevis({
       lignes: [
-        { prixHTCents: 10001, quantite: 1, tauxTVA: 20 },
-        { prixHTCents: 3337, quantite: 1, tauxTVA: 10 },
-        { prixHTCents: 1667, quantite: 1, tauxTVA: 5.5 }
+        { prix: { achat: 10001 }, quantite: 1, tauxTVA: 20 },
+        { prix: { achat: 3337 }, quantite: 1, tauxTVA: 10 },
+        { prix: { achat: 1667 }, quantite: 1, tauxTVA: 5.5 }
       ],
       remiseGlobalePct: 3.33
     });
@@ -302,7 +302,7 @@
   });
 
   test('remise nulle ne modifie rien', function () {
-    var lignes = [{ prixHTCents: 12345, quantite: 2, tauxTVA: 20 }];
+    var lignes = [{ prix: { achat: 12345 }, quantite: 2, tauxTVA: 20 }];
     var a = App.calc.computeDevis({ lignes: lignes });
     var b = App.calc.computeDevis({ lignes: lignes, remiseGlobalePct: 0 });
     egal(a.totalTTCCents, b.totalTTCCents);
@@ -326,7 +326,7 @@
 
   test('l\'acompte est calculé sur le TTC', function () {
     var r = App.calc.computeDevis({
-      lignes: [{ prixHTCents: 100000, quantite: 1, tauxTVA: 20 }],
+      lignes: [{ prix: { achat: 100000 }, quantite: 1, tauxTVA: 20 }],
       acomptePct: 30
     });
     egal(r.totalTTCCents, 120000);
@@ -336,7 +336,7 @@
 
   test('acompte + reste = TTC', function () {
     var r = App.calc.computeDevis({
-      lignes: [{ prixHTCents: 33333, quantite: 3, tauxTVA: 5.5 }],
+      lignes: [{ prix: { achat: 33333 }, quantite: 3, tauxTVA: 5.5 }],
       acomptePct: 33.33
     });
     egal(r.acompteCents + r.resteAPayerCents, r.totalTTCCents);
@@ -420,7 +420,7 @@
   test('normalize complète les champs absents', function () {
     var d = App.schema.normalize({
       schemaVersion: 1,
-      devis: [{ numero: '2026-0001', lignes: [{ titre: 'X', prixHTCents: 100 }] }]
+      devis: [{ numero: '2026-0001', lignes: [{ titre: 'X', prix: { achat: 100 } }] }]
     });
     assert(d.societe.nom === '', 'société par défaut');
     assert(d.settings.numerotation.largeur === 4, 'réglages par défaut');
@@ -452,17 +452,17 @@
   test('une ligne copie le libellé, le prix et le taux à l\'insertion', function () {
     var p = App.schema.nouveauProduit({
       reference: 'KM-1200', titre: 'Tour parallèle',
-      prixHTCents: 489000, tauxTVA: 20, unite: 'u', imageFile: 'img-1.jpg'
+      prix: { achat: 489000 }, tauxTVA: 20, unite: 'u', imageFile: 'img-1.jpg'
     });
     var l = App.schema.ligneDepuisProduit(p, 2);
 
     // Le catalogue bouge APRÈS l'insertion.
-    p.prixHTCents = 999000;
+    p.prix.achat = 999000;
     p.titre = 'Tour parallèle (nouveau modèle)';
     p.tauxTVA = 10;
     p.imageFile = 'img-2.jpg';
 
-    egal(l.prixHTCents, 489000, 'le prix figé ne doit pas suivre le catalogue');
+    egal(l.prix.achat, 489000, 'le prix figé ne doit pas suivre le catalogue');
     egal(l.titre, 'Tour parallèle');
     egal(l.tauxTVA, 20);
     egal(l.imageFile, 'img-1.jpg');
@@ -543,8 +543,8 @@
         numero: '2026-0042', dateEmission: '2026-08-07',
         client: { nom: 'Ateliers Fournier' },
         lignes: [
-          { titre: 'Tour', prixHTCents: 489000, quantite: 1, tauxTVA: 20, unite: 'u' },
-          { titre: 'Pose', prixHTCents: 60000, quantite: 1, tauxTVA: 10, unite: 'forfait' }
+          { titre: 'Tour', prix: { achat: 489000 }, quantite: 1, tauxTVA: 20, unite: 'u' },
+          { titre: 'Pose', prix: { achat: 60000 }, quantite: 1, tauxTVA: 10, unite: 'forfait' }
         ],
         acomptePct: 30
       },
@@ -579,15 +579,15 @@
   test('colonne de remise seulement si une ligne en porte une', function () {
     var sans = App.calc.buildDocumentModel({
       societe: {},
-      devis: { lignes: [{ titre: 'A', prixHTCents: 100, quantite: 1, tauxTVA: 20 }] }
+      devis: { lignes: [{ titre: 'A', prix: { achat: 100 }, quantite: 1, tauxTVA: 20 }] }
     });
     egal(sans.afficherRemise, false);
 
     var avec = App.calc.buildDocumentModel({
       societe: {},
       devis: { lignes: [
-        { titre: 'A', prixHTCents: 100, quantite: 1, tauxTVA: 20 },
-        { titre: 'B', prixHTCents: 100, quantite: 1, tauxTVA: 20, remisePct: 5 }
+        { titre: 'A', prix: { achat: 100 }, quantite: 1, tauxTVA: 20 },
+        { titre: 'B', prix: { achat: 100 }, quantite: 1, tauxTVA: 20, remisePct: 5 }
       ] }
     });
     egal(avec.afficherRemise, true);
@@ -595,7 +595,7 @@
 
   test('acompte absent quand le pourcentage est nul', function () {
     var m = App.calc.buildDocumentModel({
-      societe: {}, devis: { lignes: [{ prixHTCents: 100, quantite: 1, tauxTVA: 20 }], acomptePct: 0 }
+      societe: {}, devis: { lignes: [{ prix: { achat: 100 }, quantite: 1, tauxTVA: 20 }], acomptePct: 0 }
     });
     egal(m.acompte, null);
   });
@@ -615,8 +615,8 @@
     var m = App.calc.buildDocumentModel({
       societe: {},
       devis: { lignes: [
-        { titre: 'A', prixHTCents: 100, quantite: 1, tauxTVA: 20, imageFile: 'i.jpg', afficherImage: false },
-        { titre: 'B', prixHTCents: 100, quantite: 1, tauxTVA: 20, imageFile: 'i.jpg', afficherImage: true }
+        { titre: 'A', prix: { achat: 100 }, quantite: 1, tauxTVA: 20, imageFile: 'i.jpg', afficherImage: false },
+        { titre: 'B', prix: { achat: 100 }, quantite: 1, tauxTVA: 20, imageFile: 'i.jpg', afficherImage: true }
       ] },
       imageUrls: { 'i.jpg': 'blob:factice' }
     });
@@ -632,7 +632,7 @@
 
   function produitAttr(attrs) {
     return App.schema.nouveauProduit({
-      reference: 'KM-1', titre: 'Tour', prixHTCents: 100000, attributs: attrs
+      reference: 'KM-1', titre: 'Tour', prix: { achat: 100000 }, attributs: attrs
     });
   }
 
@@ -661,14 +661,15 @@
     ]);
     egal(a.length, 1);
     egal(a[0].nom, 'Puissance');
-    egal(a[0].totaliser, true);
+    // L'ancien drapeau « totaliser » n'existe plus : il ne doit pas survivre.
+    egal(a[0].totaliser, undefined);
   });
 
   test('une ligne copie les attributs, et ne les partage pas', function () {
     // Même règle que le prix et le libellé : le catalogue peut bouger, un
     // devis déjà établi ne bouge pas. Une copie de surface partagerait les
     // objets et le catalogue modifierait le devis à distance.
-    var p = produitAttr([{ nom: 'Puissance', valeur: '5', unite: 'kW', totaliser: true }]);
+    var p = produitAttr([{ nom: 'Puissance', valeur: '5', unite: 'kW' }]);
     var l = App.schema.ligneDepuisProduit(p, 2);
 
     egal(l.attributs.length, 1);
@@ -682,100 +683,25 @@
     assert(l.attributs[0].id !== p.attributs[0].id, 'identifiants distincts');
   });
 
-  test('totaux multipliés par la quantité', function () {
-    var d = { lignes: [
-      { quantite: 2, attributs: [{ nom: 'Puissance', valeur: '5', unite: 'kW', totaliser: true }] },
-      { quantite: 1, attributs: [{ nom: 'Puissance', valeur: '7', unite: 'kW', totaliser: true }] }
-    ] };
-    var t = App.calc.totauxAttributs(d);
-    egal(t.length, 1);
-    egal(t[0].total, 17);
-    egal(t[0].unite, 'kW');
-  });
-
-  test('sans « totaliser », aucun total', function () {
-    var t = App.calc.totauxAttributs({ lignes: [
-      { quantite: 3, attributs: [{ nom: 'Garantie', valeur: '24', unite: 'mois', totaliser: false }] }
-    ] });
-    egal(t.length, 0);
-  });
-
-  test('valeur non numérique ignorée par les totaux', function () {
-    var t = App.calc.totauxAttributs({ lignes: [
-      { quantite: 1, attributs: [{ nom: 'Tension', valeur: '400 V triphasé', totaliser: true }] }
-    ] });
-    egal(t.length, 0);
-  });
-
-  test('deux unités différentes ne se cumulent jamais', function () {
-    // Additionner des kW et des W donnerait un nombre faux que personne ne
-    // repérerait sur le document.
-    var t = App.calc.totauxAttributs({ lignes: [
-      { quantite: 1, attributs: [{ nom: 'Puissance', valeur: '5', unite: 'kW', totaliser: true }] },
-      { quantite: 1, attributs: [{ nom: 'Puissance', valeur: '800', unite: 'W', totaliser: true }] }
-    ] });
-    egal(t.length, 2);
-    egal(t[0].unite, 'kW');
-    egal(t[1].unite, 'W');
-  });
-
-  test('colonnes d\'attributs dans le modèle de document', function () {
+  test('les caractéristiques ne sortent que sur la fiche annexée', function () {
     var m = App.calc.buildDocumentModel({
       societe: {},
-      devis: {
-        colonnesAttributs: ['Puissance', 'Tension'],
-        lignes: [
-          { titre: 'A', prixHTCents: 100, quantite: 1, tauxTVA: 20, attributs: [
-            { nom: 'Puissance', valeur: '5', unite: 'kW' },
-            { nom: 'Tension', valeur: '400 V triphasé' }
-          ] },
-          { titre: 'B', prixHTCents: 100, quantite: 1, tauxTVA: 20, attributs: [
-            { nom: 'Puissance', valeur: '7,5', unite: 'kW' }
-          ] }
-        ]
-      }
+      devis: { lignes: [
+        { titre: 'A', prix: { achat: 100 }, quantite: 1, tauxTVA: 20, attributs: [
+          { nom: 'Puissance', valeur: '5', unite: 'kW' },
+          { nom: 'Tension', valeur: '400 V triphasé' }
+        ] }
+      ] }
     });
-
-    egal(m.colonnes.length, 2);
-    // Unité commune remontée en en-tête : les cellules ne la répètent pas.
-    egal(m.colonnes[0].uniteCommune, 'kW');
-    egalTexte(m.lignes[0].attributsTexte[0], '5');
-    egalTexte(m.lignes[1].attributsTexte[0], '7,5');
-    // Pas d'unité sur « Tension » : rien à remonter.
-    egal(m.colonnes[1].uniteCommune, '');
-    egal(m.lignes[0].attributsTexte[1], '400 V triphasé');
-    // Ligne B ne porte pas l'attribut : cellule vide, le template met un tiret.
-    egal(m.lignes[1].attributsTexte[1], '');
-  });
-
-  test('unités mélangées : l\'unité redescend dans les cellules', function () {
-    var m = App.calc.buildDocumentModel({
-      societe: {},
-      devis: {
-        colonnesAttributs: ['Puissance'],
-        lignes: [
-          { titre: 'A', prixHTCents: 100, quantite: 1, tauxTVA: 20,
-            attributs: [{ nom: 'Puissance', valeur: '5', unite: 'kW' }] },
-          { titre: 'B', prixHTCents: 100, quantite: 1, tauxTVA: 20,
-            attributs: [{ nom: 'Puissance', valeur: '800', unite: 'W' }] }
-        ]
-      }
-    });
-    egal(m.colonnes[0].uniteCommune, '');
-    egalTexte(m.lignes[0].attributsTexte[0], '5 kW');
-    egalTexte(m.lignes[1].attributsTexte[0], '800 W');
-  });
-
-  test('normalize retire une colonne dont plus aucune ligne ne porte l\'attribut', function () {
-    var d = App.schema.normalize({
-      schemaVersion: 1,
-      devis: [{
-        numero: '1', colonnesAttributs: ['Puissance', 'Disparu', 'Puissance'],
-        lignes: [{ titre: 'A', attributs: [{ nom: 'Puissance', valeur: '5' }] }]
-      }]
-    });
-    egal(d.devis[0].colonnesAttributs.length, 1);
-    egal(d.devis[0].colonnesAttributs[0], 'Puissance');
+    // Plus de colonnes dans le tableau, plus de cumuls : le modèle ne doit
+    // plus les exposer, sinon un template les réafficherait sans qu'on le voie.
+    egal(m.colonnes, undefined);
+    egal(m.totauxAttributs, undefined);
+    egal(m.lignes[0].attributsTexte, undefined);
+    egal(m.fiches.length, 1);
+    egal(m.fiches[0].attributs.length, 2);
+    egalTexte(m.fiches[0].attributs[0].valeurTexte, '5 kW');
+    egal(m.fiches[0].attributs[1].valeurTexte, '400 V triphasé');
   });
 
   test('un fichier antérieur aux attributs reste normalisable', function () {
@@ -786,7 +712,6 @@
     });
     egal(d.catalogue[0].attributs.length, 0);
     egal(d.devis[0].lignes[0].attributs.length, 0);
-    egal(d.devis[0].colonnesAttributs.length, 0);
   });
 
   test('unité la plus fréquente d\'une caractéristique', function () {
@@ -800,81 +725,222 @@
   });
 
   // ========================================================================
-  // Cumuls en bas de colonne
+  // Types de tarifs
   // ========================================================================
 
-  groupe('Cumuls en bas de colonne');
+  groupe('Types de tarifs');
 
-  function modeleColonnes(devis) {
+  var TYPES = [
+    { id: 'achat', nom: 'Prix d\'achat', unite: '€' },
+    { id: 'location', nom: 'Location', unite: '€/mois' }
+  ];
+
+  function modeleColonnes(devis, typesTarifs) {
     return App.calc.buildDocumentModel({
       societe: {},
-      devis: Object.assign({ lignes: [], colonnesAttributs: [] }, devis),
+      devis: Object.assign({ lignes: [] }, devis),
+      typesTarifs: typesTarifs,
       imageUrls: {}
     });
   }
 
-  test('le cumul d\'une colonne suit les quantités', function () {
+  test('un espace de travail neuf connaît le prix d\'achat', function () {
+    var s = App.schema.defaultSettings();
+    egal(s.typesTarifs.length, 1);
+    egal(s.typesTarifs[0].id, App.schema.TARIF_ACHAT_ID);
+    egal(s.typesTarifs[0].unite, '€');
+  });
+
+  test('la liste des types n\'est jamais vide', function () {
+    egal(App.schema.normaliserTypesTarifs([]).length, 1);
+    egal(App.schema.normaliserTypesTarifs(null)[0].id, 'achat');
+    // Une unité vide retombe sur l'euro : un prix sans unité ne se lit pas.
+    egal(App.schema.normaliserTypesTarifs([{ id: 'x', nom: 'X', unite: '' }])[0].unite, '€');
+    // Deux entrées de même identifiant : la seconde est écartée.
+    egal(App.schema.normaliserTypesTarifs([{ id: 'x', nom: 'A' }, { id: 'x', nom: 'B' }]).length, 1);
+  });
+
+  test('le prix d\'une ligne dépend du tarif demandé', function () {
+    var l = { prix: { achat: 80000, location: 6000 }, quantite: 2, remisePct: 0 };
+    egal(App.calc.prixLigneCents(l, 'achat'), 80000);
+    egal(App.calc.prixLigneCents(l, 'location'), 6000);
+    // Tarif non porté par la ligne : zéro, jamais un autre prix à la place.
+    egal(App.calc.prixLigneCents(l, 'journee'), 0);
+    egal(App.calc.ligneTotalHTCents(l, 'location'), 12000);
+    // Sans tarif précisé : le prix d'achat, comme avant les types de tarifs.
+    egal(App.calc.ligneTotalHTCents(l), 160000);
+  });
+
+  test('changer le tarif mis en avant recalcule tout le devis', function () {
+    var devis = { lignes: [
+      { prix: { achat: 80000, location: 6000 }, quantite: 1, tauxTVA: 20 },
+      { prix: { achat: 20000, location: 1500 }, quantite: 2, tauxTVA: 20 }
+    ] };
+    var achat = App.calc.computeDevis(Object.assign({ tarifId: 'achat' }, devis));
+    var location = App.calc.computeDevis(Object.assign({ tarifId: 'location' }, devis));
+    egal(achat.totalHTCents, 120000);
+    egal(achat.totalTTCCents, 144000);
+    egal(location.totalHTCents, 9000);
+    egal(location.totalTTCCents, 10800);
+    egal(location.tarifId, 'location');
+  });
+
+  test('une ligne copie tous les prix, pas seulement celui du moment', function () {
+    var p = App.schema.nouveauProduit({ prix: { achat: 80000, location: 6000 } });
+    var l = App.schema.ligneDepuisProduit(p, 1);
+    egal(l.prix.achat, 80000);
+    egal(l.prix.location, 6000);
+    egal(l.prixHTCents, undefined, 'l\'ancien champ ne doit pas revenir');
+
+    // Le catalogue bouge APRÈS : la ligne garde ses deux prix.
+    p.prix.location = 9900;
+    delete p.prix.achat;
+    egal(l.prix.location, 6000);
+    egal(l.prix.achat, 80000);
+  });
+
+  test('un nouveau devis met en avant le premier type de la liste', function () {
+    var st = App.schema.defaultSettings();
+    st.typesTarifs = [TYPES[1], TYPES[0]];
+    var d = App.schema.nouveauDevis(st);
+    egal(d.tarifId, 'location');
+    egal(d.tarifsInfo.length, 0);
+  });
+
+  test('normalize : prix du catalogue bornés aux types connus, lignes intactes', function () {
+    var d = App.schema.normalize({
+      schemaVersion: 2,
+      settings: { typesTarifs: [TYPES[0]] },
+      catalogue: [{ id: 'p1', reference: 'X', titre: 'T', prix: { achat: 100, location: 50, '': 3 } }],
+      devis: [{ id: 'd1', numero: '1', tarifId: 'location', tarifsInfo: ['location', 'achat', 'achat', 'inconnu'],
+        lignes: [{ id: 'l1', titre: 'A', prix: { achat: 100, location: 50 } }] }]
+    });
+    egal(Object.keys(d.catalogue[0].prix).join(','), 'achat');
+    // La ligne est un snapshot : elle garde le loyer même si le type a disparu.
+    egal(d.devis[0].lignes[0].prix.location, 50);
+    // Le tarif mis en avant est conservé, même orphelin : les montants du devis
+    // ne doivent pas changer parce qu'on a retouché les réglages.
+    egal(d.devis[0].tarifId, 'location');
+    // Les tarifs d'information : connus, dédoublonnés, jamais le principal.
+    egal(d.devis[0].tarifsInfo.join(','), 'achat');
+  });
+
+  test('normalize : un devis sans tarif prend le premier type', function () {
+    var d = App.schema.normalize({
+      schemaVersion: 2,
+      settings: { typesTarifs: [TYPES[1], TYPES[0]] },
+      devis: [{ id: 'd1', numero: '1', lignes: [] }]
+    });
+    egal(d.devis[0].tarifId, 'location');
+  });
+
+  test('migration 1 -> 2 : l\'ancien prix devient le prix d\'achat', function () {
+    var d = App.schema.migrate({
+      schemaVersion: 1,
+      catalogue: [{ id: 'p1', prixHTCents: 48900, attributs: [{ nom: 'P', valeur: '5', totaliser: true }] }],
+      devis: [{ id: 'd1', colonnesAttributs: ['P'],
+        lignes: [{ id: 'l1', prixHTCents: 12000, quantite: 1, attributs: [{ nom: 'P', valeur: '5', totaliser: true }] }] }]
+    });
+    egal(d.schemaVersion, 2);
+    egal(d.settings.typesTarifs[0].id, 'achat');
+    egal(d.catalogue[0].prix.achat, 48900);
+    egal(d.catalogue[0].prixHTCents, undefined);
+    egal(d.catalogue[0].attributs[0].totaliser, undefined);
+    egal(d.devis[0].tarifId, 'achat');
+    egal(d.devis[0].tarifsInfo.length, 0);
+    egal(d.devis[0].colonnesAttributs, undefined);
+    egal(d.devis[0].lignes[0].prix.achat, 12000);
+    egal(d.devis[0].lignes[0].prixHTCents, undefined);
+    // Les montants d'avant la migration sont exactement conservés.
+    egal(App.calc.computeDevis(d.devis[0]).totalHTCents, 12000);
+  });
+
+  test('modèle : tarif mis en avant, unité sur les totaux', function () {
     var m = modeleColonnes({
-      colonnesAttributs: ['Puissance', 'Tension'],
+      tarifId: 'location',
+      lignes: [{ id: '1', titre: 'A', quantite: 2, prix: { achat: 80000, location: 6000 }, tauxTVA: 20,
+        attributs: [{ nom: 'Puissance', valeur: '5', unite: 'kW' }] }]
+    }, TYPES);
+    egal(m.tarif.id, 'location');
+    egal(m.tarif.nom, 'Location');
+    egal(m.tarif.unite, '€/mois');
+    egal(m.tarif.afficherNom, true, 'deux types : le tarif se nomme sur le document');
+    egalTexte(m.tarif.colonneTexte, 'P.U. HT (€/mois)');
+    egalTexte(m.tarif.totalTexte, 'Total HT (€/mois)');
+    egalTexte(m.lignes[0].prixUnitaireTexte, '60,00');
+    egalTexte(m.lignes[0].totalHTTexte, '120,00');
+    egalTexte(m.totaux.totalHTEurosTexte, '120,00 €/mois');
+    egalTexte(m.totaux.totalTTCTexte, '144,00 €/mois');
+    egalTexte(m.fiches[0].prixUnitaireTexte, '60,00 €/mois');
+  });
+
+  test('modèle : un seul type, le tarif ne se nomme pas et l\'unité € reste implicite', function () {
+    var m = modeleColonnes({
+      lignes: [{ id: '1', titre: 'A', quantite: 1, prix: { achat: 100 }, tauxTVA: 20 }]
+    });
+    egal(m.tarif.afficherNom, false);
+    egalTexte(m.tarif.colonneTexte, 'P.U. HT');
+    egalTexte(m.tarif.totalTexte, 'Total HT');
+    egalTexte(m.totaux.totalHTEurosTexte, '1,00 €');
+  });
+
+  test('modèle : tarifs d\'information sous le prix, jamais le principal, jamais vides', function () {
+    var m = modeleColonnes({
+      tarifId: 'achat',
+      tarifsInfo: ['achat', 'location'],
       lignes: [
-        { id: '1', titre: 'A', quantite: 2, prixHTCents: 100, tauxTVA: 20, attributs: [
-          { nom: 'Puissance', valeur: '5', unite: 'kW', totaliser: true },
-          { nom: 'Tension', valeur: '400 V', totaliser: true }
-        ] },
-        { id: '2', titre: 'B', quantite: 1, prixHTCents: 100, tauxTVA: 20, attributs: [
-          { nom: 'Puissance', valeur: '7', unite: 'kW', totaliser: true }
-        ] }
+        { id: '1', titre: 'A', quantite: 1, prix: { achat: 80000, location: 6000 }, tauxTVA: 20 },
+        { id: '2', titre: 'B', quantite: 1, prix: { achat: 20000 }, tauxTVA: 20 }
       ]
-    });
-    assert(m.afficherTotauxColonnes, 'ligne de totaux attendue');
-    // 5 x 2 + 7 x 1. L'unité est déjà dans l'en-tête, elle ne s'y répète pas.
-    egalTexte(m.colonnes[0].totalTexte, '17');
-    // « 400 V » n'est pas un nombre : rien à cumuler, et surtout rien à inventer.
-    egal(m.colonnes[1].totalTexte, '');
+    }, TYPES);
+    egal(m.tarifsInfo.length, 1);
+    egal(m.tarifsInfo[0].id, 'location');
+    egal(m.lignes[0].prixInfo.length, 1);
+    egal(m.lignes[0].prixInfo[0].nom, 'Location');
+    egalTexte(m.lignes[0].prixInfo[0].texte, '60,00 €/mois');
+    // La ligne B n'a pas de loyer : rien à afficher, pas un zéro.
+    egal(m.lignes[1].prixInfo.length, 0);
+    // Les totaux ne bougent pas : l'information n'entre pas dans le calcul.
+    egalTexte(m.totaux.totalHTTexte, '1 000,00');
   });
 
-  test('un cumul affiché en colonne n\'est pas répété dans l\'encart', function () {
+  test('modèle : un tarif d\'information que personne ne chiffre disparaît', function () {
     var m = modeleColonnes({
-      colonnesAttributs: ['Puissance'],
-      lignes: [{ id: '1', titre: 'A', quantite: 1, prixHTCents: 100, tauxTVA: 20,
-        attributs: [{ nom: 'Puissance', valeur: '5', unite: 'kW', totaliser: true }] }]
-    });
-    egalTexte(m.colonnes[0].totalTexte, '5');
-    egal(m.totauxAttributs.length, 0);
+      tarifId: 'achat',
+      tarifsInfo: ['location'],
+      lignes: [{ id: '1', titre: 'A', quantite: 1, prix: { achat: 80000 }, tauxTVA: 20 }]
+    }, TYPES);
+    egal(m.tarifsInfo.length, 0);
   });
 
-  test('un cumul sans colonne reste dans l\'encart', function () {
+  test('modèle : un type supprimé garde ses montants', function () {
+    // Le devis met en avant un identifiant que la liste ne connaît plus : il
+    // continue de se chiffrer, il perd seulement son nom.
     var m = modeleColonnes({
-      colonnesAttributs: [],
-      lignes: [{ id: '1', titre: 'A', quantite: 1, prixHTCents: 100, tauxTVA: 20,
-        attributs: [{ nom: 'Puissance', valeur: '5', unite: 'kW', totaliser: true }] }]
-    });
-    egal(m.totauxAttributs.length, 1);
-    egal(m.afficherTotauxColonnes, false);
+      tarifId: 'journee',
+      lignes: [{ id: '1', titre: 'A', quantite: 1, prix: { journee: 4500 }, tauxTVA: 20 }]
+    }, TYPES);
+    egal(m.tarif.nom, 'journee');
+    egalTexte(m.totaux.totalHTTexte, '45,00');
   });
 
-  test('unités mélangées : aucun cumul en colonne, l\'encart reprend la main', function () {
+  test('document : le tarif se nomme en cartouche et les prix d\'info sous le P.U.', function () {
     var m = modeleColonnes({
-      colonnesAttributs: ['Puissance'],
-      lignes: [
-        { id: '1', titre: 'A', quantite: 1, prixHTCents: 100, tauxTVA: 20,
-          attributs: [{ nom: 'Puissance', valeur: '5', unite: 'kW', totaliser: true }] },
-        { id: '2', titre: 'B', quantite: 1, prixHTCents: 100, tauxTVA: 20,
-          attributs: [{ nom: 'Puissance', valeur: '800', unite: 'W', totaliser: true }] }
-      ]
-    });
-    egal(m.colonnes[0].totalTexte, '');
-    egal(m.totauxAttributs.length, 2, 'les deux unités restent lisibles séparément');
-  });
-
-  test('une caractéristique non totalisable ne produit aucun cumul', function () {
-    var m = modeleColonnes({
-      colonnesAttributs: ['Garantie'],
-      lignes: [{ id: '1', titre: 'A', quantite: 3, prixHTCents: 100, tauxTVA: 20,
-        attributs: [{ nom: 'Garantie', valeur: '24', unite: 'mois', totaliser: false }] }]
-    });
-    egal(m.colonnes[0].totalTexte, '');
-    egal(m.afficherTotauxColonnes, false);
+      tarifId: 'location',
+      tarifsInfo: ['achat'],
+      lignes: [{ id: '1', titre: 'A', quantite: 1, prix: { achat: 80000, location: 6000 }, tauxTVA: 20 }]
+    }, TYPES);
+    var doc = App.templates.default.render(m);
+    var kv = Array.prototype.filter.call(doc.querySelectorAll('.doc-meta .kv-k'), function (k) {
+      return k.textContent === 'Tarif';
+    })[0];
+    assert(kv, 'le cartouche doit nommer le tarif');
+    egal(kv.nextSibling.textContent, 'Location');
+    egalTexte(doc.querySelector('th.c-pu').textContent, 'P.U. HT (€/mois)');
+    egalTexte(doc.querySelector('.lig-pu').textContent, '60,00');
+    egalTexte(doc.querySelector('.lig-pu-info').textContent, 'Prix d\'achat 800,00 €');
+    assert(!doc.querySelector('.c-attr'), 'plus de colonne de caractéristiques');
+    assert(!doc.querySelector('.doc-attr-totaux'), 'plus d\'encart de cumuls');
   });
 
   // ========================================================================
@@ -885,8 +951,8 @@
 
   test('un taux unique fait disparaître la colonne', function () {
     var m = modeleColonnes({ lignes: [
-      { id: '1', titre: 'A', quantite: 1, prixHTCents: 100, tauxTVA: 20 },
-      { id: '2', titre: 'B', quantite: 1, prixHTCents: 100, tauxTVA: 20 }
+      { id: '1', titre: 'A', quantite: 1, prix: { achat: 100 }, tauxTVA: 20 },
+      { id: '2', titre: 'B', quantite: 1, prix: { achat: 100 }, tauxTVA: 20 }
     ] });
     egal(m.afficherTVA, false);
     // Le taux ne disparaît pas du document : il passe sur la ligne
@@ -897,8 +963,8 @@
 
   test('deux taux différents la font revenir', function () {
     var m = modeleColonnes({ lignes: [
-      { id: '1', titre: 'A', quantite: 1, prixHTCents: 100, tauxTVA: 20 },
-      { id: '2', titre: 'B', quantite: 1, prixHTCents: 100, tauxTVA: 5.5 }
+      { id: '1', titre: 'A', quantite: 1, prix: { achat: 100 }, tauxTVA: 20 },
+      { id: '2', titre: 'B', quantite: 1, prix: { achat: 100 }, tauxTVA: 5.5 }
     ] });
     egal(m.afficherTVA, true);
     egal(m.tauxTVAUniqueTexte, null);
@@ -906,7 +972,7 @@
 
   test('taux unique : pas d\'encart de TVA, taux entre parenthèses sur Total TVA', function () {
     var m = modeleColonnes({ lignes: [
-      { id: '1', titre: 'A', quantite: 1, prixHTCents: 10000, tauxTVA: 20 }
+      { id: '1', titre: 'A', quantite: 1, prix: { achat: 10000 }, tauxTVA: 20 }
     ] });
     var doc = App.templates.default.render(m);
     assert(!doc.querySelector('.doc-tva'), 'le récapitulatif ne doit pas être rendu');
@@ -919,8 +985,8 @@
 
   test('plusieurs taux : l\'encart de TVA est rendu', function () {
     var m = modeleColonnes({ lignes: [
-      { id: '1', titre: 'A', quantite: 1, prixHTCents: 100, tauxTVA: 20 },
-      { id: '2', titre: 'B', quantite: 1, prixHTCents: 100, tauxTVA: 5.5 }
+      { id: '1', titre: 'A', quantite: 1, prix: { achat: 100 }, tauxTVA: 20 },
+      { id: '2', titre: 'B', quantite: 1, prix: { achat: 100 }, tauxTVA: 5.5 }
     ] });
     var doc = App.templates.default.render(m);
     assert(doc.querySelector('.doc-tva'), 'le récapitulatif doit être rendu');
@@ -1008,10 +1074,10 @@
   test('une fiche par produit, quel que soit le nombre de lignes', function () {
     var m = modeleColonnes({ lignes: [
       { id: '1', produitId: 'P', reference: 'KM-1', titre: 'Tour', quantite: 1,
-        prixHTCents: 150000, tauxTVA: 20, unite: 'u', description: '<b>Costaud</b>',
+        prix: { achat: 150000 }, tauxTVA: 20, unite: 'u', description: '<b>Costaud</b>',
         attributs: [{ nom: 'Puissance', valeur: '5', unite: 'kW' }] },
       { id: '2', produitId: 'P', reference: 'KM-1', titre: 'Tour', quantite: 3,
-        prixHTCents: 150000, tauxTVA: 20, unite: 'u', description: '<b>Costaud</b>',
+        prix: { achat: 150000 }, tauxTVA: 20, unite: 'u', description: '<b>Costaud</b>',
         attributs: [{ nom: 'Puissance', valeur: '5', unite: 'kW' }] }
     ] });
     egal(m.fiches.length, 1);
@@ -1025,7 +1091,7 @@
     // Photo, description, caractéristiques : sans aucune des trois, la fiche
     // serait une page blanche portant un titre déjà lisible dans le tableau.
     var m = modeleColonnes({ lignes: [
-      { id: '1', titre: 'Livraison', quantite: 1, prixHTCents: 5000, tauxTVA: 20, attributs: [] }
+      { id: '1', titre: 'Livraison', quantite: 1, prix: { achat: 5000 }, tauxTVA: 20, attributs: [] }
     ] });
     egal(m.fiches.length, 0);
     egal(m.lignes[0].ficheAncre, null);
@@ -1035,7 +1101,7 @@
     // Distinction essentielle : « pas de photo » est un manque, que le
     // document comble ; « photo décochée » est une décision, qu'il respecte.
     var ligne = function (o) {
-      return Object.assign({ id: '1', titre: 'A', quantite: 1, prixHTCents: 100,
+      return Object.assign({ id: '1', titre: 'A', quantite: 1, prix: { achat: 100 },
         tauxTVA: 20, description: 'x', attributs: [] }, o);
     };
 
@@ -1046,14 +1112,14 @@
 
     var avec = App.calc.buildDocumentModel({
       societe: {}, imageUrls: { 'i.jpg': 'blob:factice' },
-      devis: { colonnesAttributs: [], lignes: [ligne({ imageFile: 'i.jpg' })] }
+      devis: { lignes: [ligne({ imageFile: 'i.jpg' })] }
     });
     egal(avec.lignes[0].imageUrl, 'blob:factice');
     egal(avec.lignes[0].sansPhoto, false, 'photo réelle : aucun substitut');
 
     var decochee = App.calc.buildDocumentModel({
       societe: {}, imageUrls: { 'i.jpg': 'blob:factice' },
-      devis: { colonnesAttributs: [],
+      devis: {
                lignes: [ligne({ imageFile: 'i.jpg', afficherImage: false })] }
     });
     egal(decochee.lignes[0].imageUrl, null);
@@ -1069,7 +1135,7 @@
     // L'aperçu et le conteneur d'impression coexistent dans la même page :
     // des ancres stables y seraient en double, et un lien du document imprimé
     // pourrait pointer sur l'aperçu, invisible à l'impression.
-    var ligne = { id: '1', titre: 'X', quantite: 1, prixHTCents: 1, tauxTVA: 20,
+    var ligne = { id: '1', titre: 'X', quantite: 1, prix: { achat: 1 }, tauxTVA: 20,
                   description: 'a', attributs: [] };
     var a = modeleColonnes({ lignes: [ligne] }).fiches[0].ancre;
     var b = modeleColonnes({ lignes: [ligne] }).fiches[0].ancre;
@@ -1097,16 +1163,16 @@
 
     test('aller-retour complet : écriture puis relecture', function () {
       var data = App.schema.normalize({
-        schemaVersion: 1,
+        schemaVersion: 2,
         societe: { nom: 'KM Mécanique', logoFile: 'logo.png', regimeTVA: 'normal' },
         catalogue: [App.schema.nouveauProduit({
           reference: 'KM-1200', titre: 'Tour parallèle',
-          prixHTCents: 489000, imageFile: 'img-a.jpg'
+          prix: { achat: 489000 }, imageFile: 'img-a.jpg'
         })],
         devis: [{
           id: 'd1', numero: '2026-0042', dateEmission: '2026-08-07',
           client: { nom: 'Fournier' },
-          lignes: [{ id: 'l1', titre: 'Tour', prixHTCents: 489000, quantite: 1, tauxTVA: 20, imageFile: 'img-a.jpg' }]
+          lignes: [{ id: 'l1', titre: 'Tour', prix: { achat: 489000 }, quantite: 1, tauxTVA: 20, imageFile: 'img-a.jpg' }]
         }]
       });
       var images = { 'logo.png': blobFactice(120), 'img-a.jpg': blobFactice(300) };
@@ -1119,7 +1185,7 @@
         egal(relu.data.societe.nom, 'KM Mécanique');
         egal(relu.data.catalogue.length, 1);
         egal(relu.data.catalogue[0].reference, 'KM-1200');
-        egal(relu.data.devis[0].lignes[0].prixHTCents, 489000);
+        egal(relu.data.devis[0].lignes[0].prix.achat, 489000);
         egal(Object.keys(relu.images).length, 2, 'les deux images doivent revenir');
         assert(relu.images['img-a.jpg'] instanceof Blob, 'image relue en Blob natif');
         egal(relu.images['img-a.jpg'].size, 300, 'octets préservés à l\'identique');

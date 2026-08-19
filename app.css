@@ -547,10 +547,21 @@ input.invalide, textarea.invalide {
 
 .attr-l {
   display: grid;
-  grid-template-columns: 1.4fr 1fr .7fr auto auto;
+  grid-template-columns: 1.4fr 1fr .7fr auto;
   gap: 8px;
   align-items: center;
 }
+
+/* Types de tarifs (modale du catalogue) : nom, unite, ordre, suppression. */
+.tarif-l {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.tarif-ordre { display: flex; gap: 2px; }
+.tarif-ordre .btn { padding: 4px 8px; font-size: 12.5px; }
 
 .attr-entetes {
   font-size: 11.5px;
@@ -566,12 +577,6 @@ input.invalide, textarea.invalide {
 .attr-nom { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .attr-nom-select { text-overflow: ellipsis; }
 
-/* Une case a cocher desactivee doit se voir desactivee : sans cela, on croit
-   avoir coche et rien ne se passe sur le document. */
-.bascule.inactif { opacity: .45; cursor: not-allowed; }
-
-.attr-tot { white-space: nowrap; font-size: 12.5px; }
-
 .attr-sup {
   padding: 4px 10px;
   line-height: 1;
@@ -581,14 +586,23 @@ input.invalide, textarea.invalide {
 .attr-ajout { align-self: flex-start; margin-top: 4px; }
 
 /* ==========================================================================
-   Selection des colonnes d'attributs (vue devis)
+   Choix du tarif (vue devis)
    ========================================================================== */
 
-.cols-attrs { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
+.tarifs-barre {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  align-items: center;
+  padding: 0 0 12px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--ui-bord);
+  font-size: 12.5px;
+}
 
-.cols-attrs .bascule { font-size: 12.5px; }
-
-.cols-vide { font-size: 12px; color: var(--ui-encre-faible); }
+.tarifs-barre select { font-size: 13px; }
+.tarifs-barre .bascule { font-size: 12.5px; }
+.tarifs-lib { font-size: 12px; color: var(--ui-encre-faible); }
 
 button.lien {
   border: 0; background: none; padding: 0;
@@ -696,6 +710,7 @@ button.lien {
 
 .cat-prix { flex: 0 0 auto; text-align: right; }
 .cat-prix-v { font-weight: 700; white-space: nowrap; }
+.cat-prix-s { font-size: 12px; color: var(--ui-encre-douce); white-space: nowrap; }
 .cat-prix-d { font-size: 11.5px; color: var(--ui-encre-faible); white-space: nowrap; }
 
 .cat-actions { flex: 0 0 auto; display: flex; gap: 4px; }
@@ -1061,6 +1076,18 @@ button.lien {
 .lig-desc-champ .riche-btn { min-width: 22px; padding: 2px 5px; font-size: 12px; }
 
 .lig-col { display: flex; flex-direction: column; gap: 4px; }
+
+/* Tarifs d'information sous le prix unitaire : meme champ, en plus petit,
+   precede du nom du tarif. Ils n'entrent pas dans le total. */
+.lig-pu-info { display: flex; flex-direction: column; gap: 1px; }
+.lig-pu-info-k {
+  font-size: 10.5px;
+  color: var(--ui-encre-faible);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lig-pu-info .lig-champ { font-size: 12px; padding-top: 3px; padding-bottom: 3px; }
 .lig-unite-champ { font-size: 11.5px; text-align: center; color: var(--ui-encre-douce); }
 .aligne-droite { text-align: right; }
 
@@ -1404,6 +1431,8 @@ button.lien {
 .sel-ref { font-size: 11px; color: var(--ui-encre-faible); font-family: ui-monospace, Consolas, monospace; }
 .sel-titre { font-weight: 600; font-size: 13.5px; }
 .sel-prix { flex: 0 0 auto; font-weight: 600; white-space: nowrap; }
+/* Fiche sans prix pour le tarif du devis : elle s'insere quand meme, a zero. */
+.sel-prix-absent { font-weight: 400; font-style: italic; color: var(--ui-encre-faible); }
 
 /* ==========================================================================
    Zone de dépôt d'image

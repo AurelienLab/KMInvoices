@@ -139,8 +139,23 @@ qui la référencent.
 
 ### 3. Catalogue
 
-Une fiche par machine : référence unique, désignation, description, prix HT, taux de TVA,
-unité, caractéristiques, photo.
+Une fiche par machine : référence unique, désignation, description, un prix HT par type
+de tarif, taux de TVA, unité, caractéristiques, photo.
+
+#### Types de tarifs
+
+L'outil sert à vendre **et à louer**. Le bouton **Types de tarifs** du catalogue définit
+les tarifs que chaque fiche peut porter : un nom et une unité affichée après le montant —
+`Prix d'achat` en `€`, `Location` en `€/mois`, `Location journée` en `€/jour`… Un espace
+de travail neuf n'en connaît qu'un, le prix d'achat.
+
+Chaque fiche renseigne ensuite les tarifs qui la concernent : *Prix d'achat 800 € /
+Location 60 €/mois*. Un champ laissé vide signifie que la machine ne se propose pas sous
+ce tarif — une ligne de devis qui le mettrait en avant afficherait 0, ce qui se voit.
+
+Le premier type de la liste est celui qu'un nouveau devis met en avant. Un type mis en
+avant par un devis existant ne peut pas être supprimé : changer d'abord le tarif de ces
+devis.
 
 La photo s'importe par glisser-déposer ou par sélection de fichier. Elle est
 automatiquement réduite à 1200 px de plus grand côté et réencodée en JPEG qualité 0,8
@@ -154,18 +169,13 @@ valeur, une unité**. Puissance 5 kW, masse 1200 kg, alimentation 400 V triphas�
 La valeur reste du **texte** : `400 V triphasé` passe aussi bien que `5`. Rien n'est
 imposé à la saisie.
 
-La case **Totaliser** ajoute la caractéristique aux totaux du document, **multipliée par
-la quantité** : deux machines de 5 kW donnent 10 kW. Elle ne s'active que sur une valeur
-numérique — cocher n'aurait aucun effet sur `400 V triphasé`, et la case le dit plutôt
-que de laisser croire le contraire.
-
-Elle reste facultative sur les valeurs numériques : cumuler une puissance a du sens,
-cumuler une durée de garantie n'en a aucun. L'outil ne peut pas le deviner, c'est à vous
-de le dire.
+Les caractéristiques s'impriment **uniquement sur la fiche produit** annexée au document,
+jamais dans le tableau des lignes. Le tableau reste une lecture de chiffres ; le détail
+technique a sa page.
 
 Le champ *Nom* propose les caractéristiques déjà employées ailleurs dans le catalogue.
-S'en servir plutôt que de ressaisir : deux orthographes du même nom donnent deux colonnes
-distinctes sur le document.
+S'en servir plutôt que de ressaisir : deux orthographes du même nom donnent deux
+caractéristiques distinctes.
 
 Une fiche **archivée** disparaît de la sélection sans casser les devis qui l'utilisent.
 C'est la bonne façon de retirer une machine du commerce.
@@ -176,15 +186,13 @@ Créer un devis, renseigner le client, puis ajouter des machines depuis le catal
 des lignes libres. Quantités, remises par ligne, remise globale, acompte et observations
 se saisissent directement. Les totaux se recalculent à chaque frappe.
 
-Sous les lignes, une rangée de cases **Colonnes** choisit les caractéristiques à faire
-figurer en colonnes du document. Ne sont proposées que celles réellement portées par les
-lignes du devis — pas tout le catalogue. Ajouter ou retirer une machine met la liste à
-jour.
-
-> **Trois colonnes de caractéristiques, grand maximum.** Elles se prennent sur la largeur
-> de la désignation, qui est la seule colonne élastique du document. Au-delà, les
-> libellés de machines passent à la ligne et le tableau devient illisible. C'est une
-> limite de la feuille A4, pas de l'outil.
+Au-dessus des lignes, dès que l'espace de travail connaît plusieurs types de tarifs, le
+**tarif mis en avant** se choisit : c'est lui qui chiffre chaque ligne et tous les totaux,
+et il se reporte sur tout le document — colonne de prix, totaux, fiches. Le changer
+recalcule tout ; les prix des autres tarifs restent dans la ligne, intacts, pour pouvoir y
+revenir. Les cases **Afficher aussi, à titre d'information** ajoutent les autres tarifs
+sous le prix unitaire de chaque ligne, en plus discret, sans qu'ils entrent dans les
+totaux — un prix d'achat en regard d'un loyer, par exemple.
 
 Le panneau d'aperçu à droite montre le document réel, à l'échelle. C'est exactement ce
 qui sortira à l'impression : le même moteur de rendu produit les deux.
@@ -202,15 +210,16 @@ engageante. Il porte donc :
   renvoie un document signé croirait avoir commandé.
 - **une colonne de remise seulement s'il y en a une.** Une colonne entière de tirets
   n'apprend rien et suggère une négociation qui n'a pas eu lieu.
-- **les totaux des caractéristiques cumulables**, sous le tableau des lignes : puissance
-  totale, masse totale de l'ensemble proposé.
+- **le tarif mis en avant, nommé dans le cartouche** dès qu'il y a plusieurs types, et
+  son unité sur les en-têtes de colonnes et les totaux : « Total HT 757,14 €/mois » n'est
+  pas « 757,14 € ».
 
 ### La règle du snapshot
 
 Elle vaut pour le catalogue **et** pour le répertoire clients.
 
-**Une ligne de devis copie le libellé, le prix, le taux de TVA et les caractéristiques au
-moment où vous l'insérez. Un devis copie de même les coordonnées du client.** Modifier
+**Une ligne de devis copie le libellé, tous les prix, le taux de TVA et les
+caractéristiques au moment où vous l'insérez. Un devis copie de même les coordonnées du client.** Modifier
 ensuite la fiche
 d'origine ne change rien aux devis déjà établis. C'est voulu : un devis émis ne doit
 jamais bouger dans le dos du client — s'il déménage six mois plus tard, un devis
@@ -452,11 +461,12 @@ en cours ; il n'existe pas de fusion.
 récente de l'application est refusé avec un message explicite plutôt que lu de travers.
 Un fichier plus ancien passe par une conversion automatique.
 
-L'arrivée des caractéristiques personnalisées **n'a pas fait changer `schemaVersion`** :
-ce sont des champs ajoutés, jamais des champs déplacés. Un fichier ancien s'ouvre sans
-rien perdre, et un fichier récent reste lisible par une version antérieure de l'outil,
-qui conserve les caractéristiques sans savoir les afficher. Aucun parc à mettre à jour en
-bloc.
+Les types de tarifs ont fait passer `schemaVersion` de 1 à 2 : l'unique prix d'une fiche
+est devenu une table de prix par type, et l'ancien champ a été déplacé, pas seulement
+complété. Un fichier en version 1 s'ouvre et se convertit : son prix devient le « Prix
+d'achat », chaque devis le met en avant, et les montants ne bougent pas d'un centime. Un
+fichier en version 2 est refusé par une version antérieure de l'outil, qui ne saurait
+retrouver les prix — d'où le message explicite.
 
 ---
 
@@ -535,8 +545,8 @@ nom, changer l'identifiant dans `template.js`, et ajouter les deux balises corre
 dans `index.html`. Rien d'autre.
 
 **Un template ne décide de rien.** Il ne calcule pas, ne formate pas, et n'arbitre pas
-non plus ce qui s'affiche : `30-calc.js` lui livre `colonnes`, `afficherRemise` et
-`totauxAttributs` déjà résolus. Une variante qui voudrait réafficher un numéro de devis
+non plus ce qui s'affiche : `30-calc.js` lui livre `tarif`, `tarifsInfo` et
+`afficherRemise` déjà résolus. Une variante qui voudrait réafficher un numéro de devis
 ou une date de validité ne le pourrait pas — le modèle ne les expose plus. C'est
 volontaire : ces choix appartiennent au document, pas à sa présentation.
 
@@ -665,12 +675,12 @@ plusieurs pages — sans dépendre du reste de l'application.
 
 C'est là qu'on met la présentation au point sans avoir à saisir un vrai devis. Les
 options de la barre supérieure font varier le nombre de lignes, les photos, le logo, les
-remises et les colonnes de caractéristiques.
+remises et le tarif mis en avant.
 
-Deux cases méritent d'être manœuvrées avant toute retouche du template : **Remises de
-ligne**, qui fait apparaître et disparaître la colonne de remise, et **Toutes les
-colonnes**, qui pousse le tableau à trois caractéristiques — le cas où la désignation
-commence à souffrir.
+Trois commandes méritent d'être manœuvrées avant toute retouche du template : **Remises
+de ligne**, qui fait apparaître et disparaître la colonne de remise, **Tarif**, qui bascule
+le document du prix d'achat à la location — unité `€/mois` sur les en-têtes et les totaux —
+et **Autres tarifs en info**, qui pose les tarifs secondaires sous le prix unitaire.
 
 ---
 
