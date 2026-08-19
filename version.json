@@ -1,7 +1,7 @@
 {
-  "version": "0.2.0-rc.3",
-  "date": "2026-08-10",
-  "url": "https://github.com/AurelienLab/KMInvoices/releases/download/v0.2.0-rc.3/KMInvoices.html",
-  "schemaVersion": 1,
+  "version": "1.0.0",
+  "date": "2026-08-19",
+  "url": "https://github.com/AurelienLab/KMInvoices/releases/download/v1.0.0/KMInvoices.html",
+  "schemaVersion": 2,
   "notes": "Merge remote-tracking branch 'origin/main'"
 }
