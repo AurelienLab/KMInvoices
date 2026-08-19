@@ -14,6 +14,9 @@
 <script src="app/30-calc.js"></script>
 <script src="app/40-archive.js"></script>
 <script src="app/80-maj.js"></script>
+<!-- Le template est pur (modele -> DOM detache) : on le rend ici sans
+     l'afficher, pour verifier ce qui est emis et ce qui ne l'est pas. -->
+<script src="templates/default/template.js"></script>
 
 <style>
   * { box-sizing: border-box; }
@@ -886,8 +889,10 @@
       { id: '2', titre: 'B', quantite: 1, prixHTCents: 100, tauxTVA: 20 }
     ] });
     egal(m.afficherTVA, false);
-    // Le taux ne disparaît pas du document : il reste au récapitulatif.
+    // Le taux ne disparaît pas du document : il passe sur la ligne
+    // « Total TVA » des totaux, et le récapitulatif n'a plus lieu d'être.
     egal(m.recapTVA.length, 1);
+    egalTexte(m.tauxTVAUniqueTexte, '20 %');
   });
 
   test('deux taux différents la font revenir', function () {
@@ -896,6 +901,30 @@
       { id: '2', titre: 'B', quantite: 1, prixHTCents: 100, tauxTVA: 5.5 }
     ] });
     egal(m.afficherTVA, true);
+    egal(m.tauxTVAUniqueTexte, null);
+  });
+
+  test('taux unique : pas d\'encart de TVA, taux entre parenthèses sur Total TVA', function () {
+    var m = modeleColonnes({ lignes: [
+      { id: '1', titre: 'A', quantite: 1, prixHTCents: 10000, tauxTVA: 20 }
+    ] });
+    var doc = App.templates.default.render(m);
+    assert(!doc.querySelector('.doc-tva'), 'le récapitulatif ne doit pas être rendu');
+    var tva = Array.prototype.filter.call(doc.querySelectorAll('.tot-k'), function (k) {
+      return /^Total TVA/.test(k.textContent);
+    })[0];
+    assert(tva, 'ligne Total TVA attendue');
+    egalTexte(tva.textContent, 'Total TVA (20 %)');
+  });
+
+  test('plusieurs taux : l\'encart de TVA est rendu', function () {
+    var m = modeleColonnes({ lignes: [
+      { id: '1', titre: 'A', quantite: 1, prixHTCents: 100, tauxTVA: 20 },
+      { id: '2', titre: 'B', quantite: 1, prixHTCents: 100, tauxTVA: 5.5 }
+    ] });
+    var doc = App.templates.default.render(m);
+    assert(doc.querySelector('.doc-tva'), 'le récapitulatif doit être rendu');
+    egal(doc.querySelectorAll('.doc-tva-table tbody tr').length, 2);
   });
 
   // ========================================================================

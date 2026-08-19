@@ -285,7 +285,16 @@
     return add(bloc, liste);
   }
 
+  /**
+   * Recapitulatif de TVA, par taux.
+   *
+   * Absent quand un seul taux s'applique a tout le document : une table d'une
+   * ligne ne ferait que recopier « Total HT » et « Total TVA » du bloc voisin.
+   * Le taux passe alors entre parentheses sur la ligne « Total TVA ».
+   */
   function renderRecapTVA(m) {
+    if (m.tauxTVAUniqueTexte || !m.recapTVA.length) return null;
+
     var bloc = el('div', 'doc-tva');
     add(bloc, el('div', 'doc-bloc-titre', 'Récapitulatif de TVA'));
     var t = el('table', 'doc-tva-table');
@@ -333,7 +342,9 @@
      * n'est pas cache, il n'est simplement plus le chiffre du document.
      */
     add(bloc, ligne('Total HT', t.totalHTEurosTexte, 'tot-fort'));
-    add(bloc, ligne('Total TVA', t.totalTVATexte));
+    add(bloc, ligne(
+      'Total TVA' + (m.tauxTVAUniqueTexte ? ' (' + m.tauxTVAUniqueTexte + ')' : ''),
+      t.totalTVATexte));
     add(bloc, ligne('Total TTC', t.totalTTCTexte, 'tot-ttc'));
 
     if (m.acompte) {
@@ -345,7 +356,8 @@
   }
 
   function renderSynthese(m) {
-    // TVA a gauche, totaux a droite, l'ensemble insecable.
+    // TVA a gauche, totaux a droite, l'ensemble insecable. Sans recapitulatif
+    // (taux unique), les totaux restent cales a droite par le CSS.
     var bloc = el('section', 'doc-synthese');
     return add(bloc, renderRecapTVA(m), renderTotaux(m));
   }

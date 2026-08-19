@@ -15,7 +15,9 @@
   var I = {};
 
   I.MAX_COTE_PRODUIT = 1200;
-  I.MAX_COTE_LOGO = 600;
+  // Le logo s'imprime jusqu'a 80 mm de large (template.css) : a 600 px il
+  // sortait a ~190 dpi, visiblement flou sur papier. 1000 px donne ~320 dpi.
+  I.MAX_COTE_LOGO = 1000;
   I.QUALITE_JPEG = 0.8;
 
   I.TYPES_ACCEPTES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/bmp'];

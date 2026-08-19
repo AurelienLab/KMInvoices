@@ -113,8 +113,15 @@
 
 .doc-root .doc-logo {
   display: block;
-  max-width: 50mm;
-  max-height: 15mm;
+  /* Un logo horizontal (nom de l'entreprise en toutes lettres) a besoin de
+     largeur, pas de hauteur : a 50 x 15 mm il sortait en timbre-poste.
+     L'emplacement disponible est de ~110 mm (feuille moins marges, moins le
+     cartouche de 62 mm et son espacement) : 80 mm lui laisse de l'air. La
+     hauteur plafonne a 24 mm pour qu'un logo carre n'ecrase pas l'en-tete. */
+  max-width: 80mm;
+  max-height: 24mm;
+  width: auto;
+  height: auto;
   object-fit: contain;
   object-position: left top;
   margin-bottom: 2mm;
@@ -491,7 +498,11 @@
 
 /* Totaux */
 
-.doc-root .doc-totaux { flex: 0 0 78mm; }
+.doc-root .doc-totaux {
+  flex: 0 0 78mm;
+  /* Reste a droite meme sans recapitulatif de TVA a sa gauche (taux unique). */
+  margin-left: auto;
+}
 
 .doc-root .tot-l {
   display: flex;
