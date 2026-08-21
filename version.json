@@ -1,7 +1,7 @@
 {
-  "version": "1.0.0",
-  "date": "2026-08-19",
-  "url": "https://github.com/AurelienLab/KMInvoices/releases/download/v1.0.0/KMInvoices.html",
+  "version": "1.0.1",
+  "date": "2026-08-21",
+  "url": "https://github.com/AurelienLab/KMInvoices/releases/download/v1.0.1/KMInvoices.html",
   "schemaVersion": 2,
-  "notes": "Merge remote-tracking branch 'origin/main'"
+  "notes": "Fix characteristics value number display"
 }
