@@ -31,6 +31,13 @@
     minimumFractionDigits: 0, maximumFractionDigits: 2
   });
 
+  // Valeur libre (caracteristiques produit) : toutes les decimales saisies
+  // comptent, "0,0063 E" tronque en "0,006 E" change la donnee. 20 est le
+  // maximum accepte par Intl, au-dela de la precision d'un Number.
+  var nfNombre = new Intl.NumberFormat('fr-FR', {
+    minimumFractionDigits: 0, maximumFractionDigits: 20
+  });
+
   /** Centimes entiers -> "1 234,56 €". */
   F.euros = function (cents) {
     return nfEuro.format((cents || 0) / 100);
@@ -55,6 +62,11 @@
   /** Quantite numerique -> "7,5". */
   F.quantite = function (n) {
     return nfQte.format(n || 0);
+  };
+
+  /** Nombre sans troncature -> "0,0063". Pour les valeurs de caracteristiques. */
+  F.nombre = function (n) {
+    return nfNombre.format(n || 0);
   };
 
   /** Pourcentage -> "5,5 %". Espace insecable fine avant le %. */

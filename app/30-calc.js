@@ -284,7 +284,7 @@
 
     function texteAttribut(a) {
       var n = App.schema.valeurNumerique(a.valeur);
-      var t = n === null ? String(a.valeur == null ? '' : a.valeur) : F.quantite(n);
+      var t = n === null ? String(a.valeur == null ? '' : a.valeur) : F.nombre(n);
       return t + (a.unite ? ' ' + a.unite : '');
     }
 

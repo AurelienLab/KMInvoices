@@ -15,7 +15,7 @@
   // Source unique de la version. outils/build.py la lit pour estampiller le
   // livrable ; il ne la reecrit jamais, sous peine de divergence entre la
   // version affichee et la version reellement executee.
-  App.version = '1.0.0';
+  App.version = '1.0.1';
   App.schemaVersion = 2;
 
   // Renseigne par outils/build.py dans le livrable en fichier unique, absent
